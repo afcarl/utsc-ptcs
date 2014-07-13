@@ -25,15 +25,15 @@ def open_port():
          return None
 
 def current_info_box():
-	if current_info == [';']:
-		pass
-	else:
-		new_c_i = []
-		for i in range(len(current_info)):
-			x = manage_string(current_info[i])
-			new_c_i.append(x)
-		for i in range(len(current_info)):
-			screen.addstr(i + 15, 35, new_c_i[i])
+    if current_info == [';']:
+        pass
+    else:
+        new_c_i = []
+        for i in range(len(current_info)):
+            x = manage_string(current_info[i])
+            new_c_i.append(x)
+        for i in range(len(current_info)):
+            screen.addstr(i + 15, 35, new_c_i[i])
 
 def get_status():
      if port is not None:
@@ -58,26 +58,26 @@ def get_status():
           return [nc,nc,nc,nc,nc,nc]
 
 def manage_string(string):
-	new_string = ''
-	for i in string:
-		if i != ';':
-			new_string += i
-		else:
-			break
-	
-	return new_string
+    new_string = ''
+    for i in string:
+        if i != ';':
+            new_string += i
+        else:
+            break
+    
+    return new_string
 
 def get_param(prompt):
-	win = curses.newwin(5, 60, 5, 5)
-	win.border(0)
-	win.addstr(1,2,prompt)
-	return win.getstr(3,2,55)
+    win = curses.newwin(5, 60, 5, 5)
+    win.border(0)
+    win.addstr(1,2,prompt)
+    return win.getstr(3,2,55)
 
 help_list = ['o - Open Port', 'e - Set Alignment Side', 
              'r - Target Right Ascension', 'd - Target Declination', 
              'a - Align from Target', 
              'g - GoTo Target', 'u - Update Current Info',
-	     '------------','q - Exit']
+         '------------','q - Exit']
 
 current_info_titles = ['Alignment State:', 'Side of the Sky:',
                        'Current Right Ascension:', 'Current Declination:',
@@ -89,62 +89,62 @@ start_time = time.time()
 
 good = True
 while good: 
-	screen.clear()
-	screen.border(0)
-	screen.addstr(2, 2, "UTSC Python Telescope control system")
-	for i in range(len(help_list)):
-		screen.addstr(i + 3, 4, help_list[i])
-	for i in range(len(current_info_titles)):
-		screen.addstr(i + 15, 4, current_info_titles[i])
-	current_info_box()
-	current_time = time.time()
-	if port is not None:
-		if current_time - start_time > 2:
-			current_info = get_status()
-	screen.refresh()
-	key = screen.getch()
-
-        ##########################	
-        # Main comamnds
-	
-        # Exit
-        if key == 27 or key == ord('q'): #27=ESC
-            good = False
-
-        # Open port
-        if key == ord('o'):
-            port = open_port()
-
-        # Set declination
-        if key == ord('d'):
-            dec = get_param("Set target Declination [+dd:mm:ss]")
-	    if port is not None:
-		 port.write('!CStd' + dec + ';')
-
-        # Set right ascension
-        if key == ord('r'):
-            ra = get_param("Set target Right Ascension [hh:mm:dd]")
-	    if port is not None:
-                 port.write('!CStr' + ra + ';')
-
-        # Set alignment
-        if key == ord('e'):
-            direction = get_param("Set alignment side [West/East]")
-            if port is not None:
-                 port.write('!ASas' + direction + ';')
-
-        # Align from target
-        if key == ord('a'):
-            if port is not None:
-                 port.write('!AFrn;')
-
-        # Goto target
-        if key == ord('g'):
-            if port is not None:
-                 port.write('!GTrd;')
-
-        # Exit
-        if key == ord('u'):
+    screen.clear()
+    screen.border(0)
+    screen.addstr(2, 2, "UTSC Python Telescope control system")
+    for i in range(len(help_list)):
+        screen.addstr(i + 3, 4, help_list[i])
+    for i in range(len(current_info_titles)):
+        screen.addstr(i + 15, 4, current_info_titles[i])
+    current_info_box()
+    current_time = time.time()
+    if port is not None:
+        if current_time - start_time > 2:
             current_info = get_status()
+    screen.refresh()
+    key = screen.getch()
+
+        ##########################    
+        # Main comamnds
+    
+        # Exit
+    if key == 27 or key == ord('q'): #27=ESC
+        good = False
+
+    # Open port
+    if key == ord('o'):
+        port = open_port()
+
+    # Set declination
+    if key == ord('d'):
+        dec = get_param("Set target Declination [+dd:mm:ss]")
+        if port is not None:
+            port.write('!CStd' + dec + ';')
+
+    # Set right ascension
+    if key == ord('r'):
+        ra = get_param("Set target Right Ascension [hh:mm:dd]")
+        if port is not None:
+             port.write('!CStr' + ra + ';')
+
+    # Set alignment
+    if key == ord('e'):
+        direction = get_param("Set alignment side [West/East]")
+        if port is not None:
+             port.write('!ASas' + direction + ';')
+
+    # Align from target
+    if key == ord('a'):
+        if port is not None:
+             port.write('!AFrn;')
+
+    # Goto target
+    if key == ord('g'):
+        if port is not None:
+             port.write('!GTrd;')
+
+    # Exit
+    if key == ord('u'):
+        current_info = get_status()
 
 curses.endwin()
