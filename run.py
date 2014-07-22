@@ -19,7 +19,7 @@ def open_port():
     try:
          if port_name == '':
               port_name = default_port_name
-         ser = serial.Serial(port_name, 19200, timeout = 0.1)
+         ser = serial.Serial(port_name, 19200, timeout = 0.1) # try a baud rate of 9600, or 4800... also look into the API for the telescope controls
          return ser
     except:
          return None
@@ -76,7 +76,7 @@ def get_param(prompt):
 help_list = ['o - Open Port', 'e - Set Alignment Side', 
              'r - Target Right Ascension', 'd - Target Declination', 
              'a - Align from Target', 
-             'g - GoTo Target', 'u - Update Current Info',
+             'g - GoTo Target', 'u - Update Current Info','v - Void alignment',
          '------------','q - Exit']
 
 current_info_titles = ['Alignment State:', 'Side of the Sky:',
@@ -142,6 +142,11 @@ while good:
     if key == ord('g'):
         if port is not None:
              port.write('!GTrd;')
+    
+    # Goto target
+    if key == ord('v'):
+        if port is not None:
+             port.write('!AVoi;')
 
     # Exit
     if key == ord('u'):
