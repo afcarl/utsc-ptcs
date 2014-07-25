@@ -1,4 +1,4 @@
-#!/usr'bin/python
+#!/usr/bin/python
 import serial
 import sys
 import os
@@ -19,7 +19,7 @@ def open_port():
     try:
          if port_name == '':
               port_name = default_port_name
-         ser = serial.Serial(port_name, 19200, timeout = 0.1)
+         ser = serial.Serial(port_name, 19200, timeout = 0.1) # try a baud rate of 9600, or 4800... also look into the API for the telescope controls
          return ser
     except:
          return None
@@ -38,17 +38,17 @@ def current_info_box():
 def get_status():
      if port is not None:
           port.readline()
-          port.write('!AGas;')
+          port.write('!AGas;') # GetAlignmentState
           a = port.readline()
-          port.write('!AGai;')
+          port.write('!AGai;') # GetAlginmentSide
           b = port.readline()
-          port.write('!CGra;')
+          port.write('!CGra;') # GetRA
           c = port.readline()
-          port.write('!CGde;')
+          port.write('!CGde;') # GetDec
           d = port.readline()
-          port.write('!CGtr;')
+          port.write('!CGtr;') # GetTargetRA
           e = port.readline()
-          port.write('!CGtd;')
+          port.write('!CGtd;') # GetTargetDec
           f = port.readline()
           
           #return str(port.readline())
@@ -76,7 +76,7 @@ def get_param(prompt):
 help_list = ['o - Open Port', 'e - Set Alignment Side', 
              'r - Target Right Ascension', 'd - Target Declination', 
              'a - Align from Target', 
-             'g - GoTo Target', 'u - Update Current Info',
+             'g - GoTo Target', 'u - Update Current Info','v - Void alignment','b - Return to previous target',
          '------------','q - Exit']
 
 current_info_titles = ['Alignment State:', 'Side of the Sky:',
@@ -104,10 +104,10 @@ while good:
     screen.refresh()
     key = screen.getch()
 
-        ##########################    
-        # Main comamnds
-    
-        # Exit
+##########################    
+# Main comamnds
+
+# Exit
     if key == 27 or key == ord('q'): #27=ESC
         good = False
 
@@ -115,23 +115,24 @@ while good:
     if key == ord('o'):
         port = open_port()
 
-    # Set declination
+    # Set target declination
     if key == ord('d'):
         dec = get_param("Set target Declination [+dd:mm:ss]")
         if port is not None:
             port.write('!CStd' + dec + ';')
 
-    # Set right ascension
+    # Set target right ascension
     if key == ord('r'):
         ra = get_param("Set target Right Ascension [hh:mm:dd]")
         if port is not None:
              port.write('!CStr' + ra + ';')
 
-    # Set alignment
+    # Set alignment side
     if key == ord('e'):
         direction = get_param("Set alignment side [West/East]")
-        if port is not None:
-             port.write('!ASas' + direction + ';')
+        if direction == "West" or direction == "East": # Check for valid input
+            if port is not None:
+                 port.write('!ASas' + direction + ';')
 
     # Align from target
     if key == ord('a'):
@@ -142,8 +143,18 @@ while good:
     if key == ord('g'):
         if port is not None:
              port.write('!GTrd;')
+    
+    # Void alignment
+    if key == ord('v'):
+        if port is not None:
+             port.write('!AVoi;')
 
-    # Exit
+    # Void alignment
+    if key == ord('b'):
+        if port is not None:
+             port.write('!GTol;')
+
+    # Update information
     if key == ord('u'):
         current_info = get_status()
 
