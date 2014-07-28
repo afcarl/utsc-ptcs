@@ -73,8 +73,9 @@ def get_param(prompt):
 
 if __name__ == "__main__":
     port = open_port()
+    "(! and ; are added in automatically)"
     while not port is None:
         command = "!" + str(raw_input("Command: "))
         port.write(command + ";")
-        print port.readline().split(";")
+        print port.readline().split(";")[0]
     print "Port is None"
