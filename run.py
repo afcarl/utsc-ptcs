@@ -5,10 +5,20 @@ import os
 import time
 import curses
 from curses.textpad import Textbox, rectangle
+import socket
+import struct
 
 
 port = None
 current_info = [';']
+
+# Server stuff
+TCP_IP = '127.0.0.1'
+TCP_PORT = 10001
+BUFFER_SIZE = 1024  # Normally 1024, but we want fast response
+
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.bind((TCP_IP, TCP_PORT))
 
 def open_port():
     if os.uname()[0]=="Darwin":
@@ -73,15 +83,53 @@ def get_param(prompt):
     win.addstr(1,2,prompt)
     return win.getstr(3,2,55)
 
+def open_server():
+    s.listen(1)
+    print "Listening on", TCP_IP, TCP_PORT
+    conn,addr = s.accept()
+    conn.settimeout(1)
+    return (conn,addr)
+
+def unpack_command(command):
+    """ Unpack the data recieved from stellarium, and converts into coordinates in RA and DEC"""
+    print command
+    data = struct.unpack('<hhQIi',command)
+    RA_raw = data[-2]  # a value of 0x100000000 = 0x0 means 24h=0h,
+                       # a value of 0x80000000 means 12h
+                       # 12h = 2147483648 
+    DEC_raw = data[-1] # a value of -0x40000000 means -90 degrees
+                       # a value of 0x0 means 0 degrees
+                       #  a value of 0x40000000 means 90 degrees
+                       # 90d = 1073741824
+    dec = float(DEC_raw)/1073741824.0*90.0
+    if dec > 0:
+        dec_string = "+" + str(int(dec)) + ":" + str(int(dec%1*60)) + ":" + str(round(dec%1*60%1*60, 2)) # convert from decimal into dms
+    else:
+        dec_string = str(int(dec)) + ":" + str(int(dec%1*60)) + ":" + str(round(dec%1*60%1*60, 2)) # convert from decimal into dms
+    ra = float(RA_raw)/2147483648.0 *12.0
+    ra_string = str(int(ra)) + ":" + str(int(ra%1*60)) + ":" + str(round(ra%1*60%1*60, 2)) # convert from decimal into hms
+    return (ra_string,dec_string)
+
+
 help_list = ['o - Open Port', 'e - Set Alignment Side', 
              'r - Target Right Ascension', 'd - Target Declination', 
-             'a - Align from Target', 
-             'g - GoTo Target', 'u - Update Current Info','v - Void alignment','b - Return to previous target',
+             'a - Align from Target/(align from next stellarium slew)', 
+             'g - GoTo Target', 'u - Update Current Info',
+             'v - Void alignment',
+             'b - Return to previous target',
+             's - Open/close server commands',
          '------------','q - Exit']
 
 current_info_titles = ['Alignment State:', 'Side of the Sky:',
                        'Current Right Ascension:', 'Current Declination:',
                        'Target Right Ascension:', 'Target Declination:']
+
+conn = None
+addr = None
+server_running = False
+stell_align = False
+RA = None
+DEC = None
 
 screen = curses.initscr()
 screen.timeout(50) #stops getch() from blocking
@@ -103,6 +151,35 @@ while good:
             current_info = get_status()
     screen.refresh()
     key = screen.getch()
+
+##########################
+# Server stuff
+    if server_running:
+        try:
+            data = conn.recv(BUFFER_SIZE)
+        except: # connection timeout, assume no data sent
+            data = None
+        if data is not None:
+            RA, DEC = unpack_command(data) 
+            data = None
+            #conn.send(data)  TODO: return to stellarium the current RA and DEC from the telescope
+            if stell_align and (DEC is not None and RA is not None):
+                stell_align = False
+                print "align"
+                print port.write('!CStd' + DEC + ';')
+                time.sleep(1) # pause
+                print port.write('!CStr' + RA + ';')
+                time.sleep(2) # pause
+                print port.write('!AFrn;')
+            elif DEC is not None and RA is not None:
+                print "goto"
+                print port.write('!CStd' + DEC + ';')
+                time.sleep(1) # pause
+                print port.write('!CStr' + RA + ';')
+                time.sleep(1) # pause
+                print port.write('!GTol;')
+                time.sleep(1) # pause
+
 
 ##########################    
 # Main comamnds
@@ -137,7 +214,10 @@ while good:
     # Align from target
     if key == ord('a'):
         if port is not None:
-             port.write('!AFrn;')
+            if server_running:
+                stell_align = True
+            else:
+                port.write('!AFrn;')
 
     # Goto target
     if key == ord('g'):
@@ -149,10 +229,19 @@ while good:
         if port is not None:
              port.write('!AVoi;')
 
-    # Void alignment
+    # previous alignment
     if key == ord('b'):
         if port is not None:
              port.write('!GTol;')
+    
+    # Open Server
+    if key == ord('s'):
+        if server_running:
+            server_running = False
+            conn.close()
+        else:
+            conn, addr = open_server()
+            server_running = True
 
     # Update information
     if key == ord('u'):
