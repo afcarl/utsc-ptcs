@@ -137,6 +137,7 @@ start_time = time.time()
 
 good = True
 while good: 
+
     screen.clear()
     screen.border(0)
     screen.addstr(2, 2, "UTSC Python Telescope control system")
@@ -155,6 +156,7 @@ while good:
 ##########################
 # Server stuff
     if server_running:
+        data = None
         try:
             data = conn.recv(BUFFER_SIZE)
         except: # connection timeout, assume no data sent
@@ -163,22 +165,21 @@ while good:
             RA, DEC = unpack_command(data) 
             data = None
             #conn.send(data)  TODO: return to stellarium the current RA and DEC from the telescope
-            if stell_align and (DEC is not None and RA is not None):
+            if stell_align and DEC is not None and RA is not None:
                 stell_align = False
-                print "align"
-                print port.write('!CStd' + DEC + ';')
-                time.sleep(1) # pause
-                print port.write('!CStr' + RA + ';')
+                port.write('!CStd' + DEC + ';')
                 time.sleep(2) # pause
-                print port.write('!AFrn;')
+                port.write('!CStr' + RA + ';')
+                time.sleep(2) # pause
+                port.write('!AFrn;')
+                time.sleep(2) # pause
             elif DEC is not None and RA is not None:
-                print "goto"
-                print port.write('!CStd' + DEC + ';')
-                time.sleep(1) # pause
-                print port.write('!CStr' + RA + ';')
-                time.sleep(1) # pause
-                print port.write('!GTol;')
-                time.sleep(1) # pause
+                port.write('!CStd' + DEC + ';')
+                time.sleep(2) # pause
+                port.write('!CStr' + RA + ';')
+                time.sleep(2) # pause
+                port.write('!GTol;')
+                time.sleep(2) # pause
 
 
 ##########################    
