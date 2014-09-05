@@ -103,11 +103,11 @@ def unpack_command(command):
                        # 90d = 1073741824
     dec = float(DEC_raw)/1073741824.0*90.0
     if dec > 0:
-        dec_string = "+" + str(int(dec)) + ":" + str(int(dec%1*60)) + ":" + str(round(dec%1*60%1*60, 2)) # convert from decimal into dms
+        dec_string = "+" + str(int(dec)) + ":" + str(int(dec%1*60)) + ":" + str(round(dec%1*60%1*60, 1)) # convert from decimal into dms
     else:
-        dec_string = str(int(dec)) + ":" + str(int(dec%1*60)) + ":" + str(round(dec%1*60%1*60, 2)) # convert from decimal into dms
+        dec_string = str(int(dec)) + ":" + str(int(dec%1*60)) + ":" + str(round(dec%1*60%1*60, 1)) # convert from decimal into dms
     ra = float(RA_raw)/2147483648.0 *12.0
-    ra_string = str(int(ra)) + ":" + str(int(ra%1*60)) + ":" + str(round(ra%1*60%1*60, 2)) # convert from decimal into hms
+    ra_string = str(int(ra)) + ":" + str(int(ra%1*60)) + ":" + str(round(ra%1*60%1*60, 1)) # convert from decimal into hms
     return (ra_string,dec_string)
 
 
@@ -150,6 +150,7 @@ while good:
     if port is not None:
         if current_time - start_time > 2:
             current_info = get_status()
+            start_time = current_time # only update the infos every 2 seconds
     screen.refresh()
     key = screen.getch()
 
@@ -167,19 +168,23 @@ while good:
             #conn.send(data)  TODO: return to stellarium the current RA and DEC from the telescope
             if stell_align and DEC is not None and RA is not None:
                 stell_align = False
+                print "Aligning"
                 port.write('!CStd' + DEC + ';')
-                time.sleep(2) # pause
+                print port.readline()
                 port.write('!CStr' + RA + ';')
-                time.sleep(2) # pause
+                print port.readline()
                 port.write('!AFrn;')
-                time.sleep(2) # pause
+                print port.readline()
+                print "Alignment complete"
             elif DEC is not None and RA is not None:
+                print "Go to object"
                 port.write('!CStd' + DEC + ';')
-                time.sleep(2) # pause
+                print port.readline()
                 port.write('!CStr' + RA + ';')
-                time.sleep(2) # pause
-                port.write('!GTol;')
-                time.sleep(2) # pause
+                print port.readline()
+                port.write('!GTrd;')
+                print port.readline()
+                print "goto complete"
 
 
 ##########################    
@@ -224,6 +229,7 @@ while good:
     if key == ord('g'):
         if port is not None:
              port.write('!GTrd;')
+             print port.readline()
     
     # Void alignment
     if key == ord('v'):
@@ -239,10 +245,12 @@ while good:
     if key == ord('s'):
         if server_running:
             server_running = False
+            print "Closing connection"
             conn.close()
         else:
             conn, addr = open_server()
             server_running = True
+            print "Server open"
 
     # Update information
     if key == ord('u'):
