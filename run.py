@@ -174,7 +174,9 @@ while good:
     for i in range(len(help_list)):
         screen.addstr(i + 3, 4, help_list[i])
     for i in range(len(current_info_titles)):
-        screen.addstr(i + 25, 4, current_info_titles[i])
+        x = i+25
+        if x <= screen.getmaxyx()[0]:
+            screen.addstr(i + 25, 4, current_info_titles[i])
     current_info_box()
     current_time = time.time()
     if port is not None:
