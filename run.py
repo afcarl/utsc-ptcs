@@ -1,13 +1,33 @@
 #!/usr/bin/python
 import serial
-import sys
 import os
 import time
 import curses
-from curses.textpad import Textbox, rectangle
 import socket
 import struct
 import time
+
+## Conversion functions
+def dec_str2raw(s):
+    f = [float(i) for i in s.split(":")]
+    if f[0]<0.:
+        dec = f[0]-f[1]/60.-f[2]/60./60. 
+    else:
+        dec = f[0]+f[1]/60.+f[2]/60./60. 
+    return int(dec*1073741824.0/90.0)
+
+def ra_str2raw(s):
+    f = [float(i) for i in s.split(":")]
+    ra = f[0]+f[1]/60.+f[2]/60./60.
+    return int(ra*2147483648.0/12.0)
+
+def dec_raw2str(raw):
+    dec = float(raw)/1073741824.0*90.0
+    return "%+02d:%02d:%02d" % (int(dec), int(abs(dec)%1*60), round(abs(dec)%1*60%1*60, 1))
+
+def ra_raw2str(raw):
+    ra = float(raw)/2147483648.0 *12.0
+    return  "%02d:%02d:%02d" % (int(ra),  int(ra%1*60),  round(ra%1*60%1*60, 1)) 
 
 class Menu():                                                          
     def __init__(self):
@@ -25,7 +45,7 @@ class Menu():
             ('t','Toggle Stellarium mode',          telescope.toggle_stellarium_mode),
             ('p','Write observation data to file',  telescope.write_telescope_readout),
             ('c','Custom commands',                 telescope.send_custom_command),
-            ('q','Exit',                            exit)
+            ('q','Exit',                            telescope.exit)
             ]
         
         self.window = curses.newwin(len(self.menuitems)+2,67,4,2)                                  
@@ -87,36 +107,31 @@ class Menu():
                                                # a value of 0x0 means 0 degrees
                                                #  a value of 0x40000000 means 90 degrees
                                                # 90d = 1073741824
-                            dec = float(DEC_raw)/1073741824.0*90.0
-                            dec_string = "%+02d:%02d:%02d" % (int(dec), int(dec%1*60), round(dec%1*60%1*60, 1))
-                            ra = float(RA_raw)/2147483648.0 *12.0
-                            ra_string  = "%02d:%02d:%02d"  % (int(ra),  int(ra%1*60),  round(ra%1*60%1*60, 1)) 
+                            ra_string, dec_string = ra_raw2str(data[-2]), dec_raw2str(data[-1])
                             telescope.set_status("Received from stellarium: %s %s" % (ra_string,dec_string))
+                            telescope.set_status("Received from stellarium: %s %s" % (data[-1], data[-2]))
+                            telescope.set_status("Received from stellarium: %s %s" % (dec_str2raw(dec_string), ra_str2raw(ra_string)))
                             telescope.send('!CStr' + ra_string + ';')
                             telescope.send('!CStd' + dec_string + ';')
                             if telescope.stellarium_mode==0: #align
                                 telescope.align_from_target()
                             else: #goto
                                 telescope.go_to_target()
+                            response = struct.pack('<hhQIii',24,data[1],data[2],data[3],data[4],0)
+                            telescope.conn.send(response)
                         elif len(data)==0:
-                            continue
+                            pass
                         else:
                             telescope.set_status("Unknown command received of length %d."%len(data))
-
-
-
-
                     except socket.error as e:
                         pass
 
-                 
 
 class Status():                                                          
     def __init__(self):
         ypos = 4+telescope.menu.window.getmaxyx()[0]
         self.window_status = curses.newwin(6,67,ypos,2)                                  
         
-        self.last_telescope_update = 0
         self.telescope_states= [
             ['Alignment state',              '!AGas;', ""],  
             ['Side of the sky',              '!AGai;', ""],
@@ -128,11 +143,11 @@ class Status():
         ypos += self.window_status.getmaxyx()[0]
         self.window_telescope = curses.newwin(3+len(self.telescope_states),67,ypos,2)                                  
         
-        self.maxmessages = 5;
+        self.maxmessages = 6;
         self.messages = []
         self.push_message("PTCS initialized.")
         ypos += self.window_telescope.getmaxyx()[0]
-        self.window_messages = curses.newwin(4+self.maxmessages,67,ypos,2)                                  
+        self.window_messages = curses.newwin(3+self.maxmessages,67,ypos,2)                                  
 
     def push_message(self,message):
         if len(message)>0:
@@ -183,10 +198,14 @@ class Status():
         self.window_telescope.clear()
         self.window_telescope.border(0)
         
-        if telescope.serialport is not None or True:
-            if time.time() - self.last_telescope_update > 2.: # only update the infos every 2 seconds
-                self.last_telescope_update = time.time()
+        if telescope.serialport is not None:
+            if time.time() - telescope.last_telescope_update > 2.: # only update the infos every 2 seconds
+                telescope.last_telescope_update = time.time()
                 self.get_telescope_status()
+                if telescope.socket is not None:
+                    if telescope.conn is None:
+                        self.push_message("sending info to stellarium")
+
 
         self.window_telescope.addstr(1, 2, "Telescope readout", curses.A_BOLD)                    
         for (index,element) in enumerate(self.telescope_states):
@@ -213,6 +232,7 @@ class Telescope():
     def __init__(self, stdscreen):
         global telescope
         telescope = self
+        self.last_telescope_update = 0
         self.conn = None
         self.socket = None
         self.serialport = None
@@ -342,6 +362,14 @@ class Telescope():
             f.write(value+"\n")
             self.set_status("Telescope readout saved.")
             f.close()
+    def exit(self):
+        if self.socket is not None:
+            socket.close()
+        if self.serialport is not None:
+            if self.serialport.isOpen():
+                self.serialport.close()
+        exit()
+
         
 if __name__ == '__main__':                                                       
     curses.wrapper(Telescope)
