@@ -22,6 +22,7 @@ class Menu():
             ('v','Void alignment',                  telescope.void_alignment),
             ('b','Return to previous target',       telescope.previous_alignment),
             ('s','Open Stellarium server',          telescope.start_server),
+            ('t','Toggle Stellarium mode',          telescope.toggle_stellarium_mode),
             ('p','Write observation data to file',  telescope.write_observation_data),
             ('c','Custom commands',                 telescope.send_custom_command),
             ('q','Exit',                            exit)
@@ -71,7 +72,7 @@ class Menu():
                 if telescope.conn is None:
                     try:
                         telescope.conn, addr = telescope.socket.accept()
-                        telescope.set_status("Connection established from %s:%d"% addr)
+                        telescope.set_status("Connection established from %s:%d."% addr)
                     except socket.error as e:
                         pass
                 else:
@@ -88,13 +89,16 @@ class Menu():
                                                #  a value of 0x40000000 means 90 degrees
                                                # 90d = 1073741824
                             dec = float(DEC_raw)/1073741824.0*90.0
-                            if dec > 0:
-                                dec_string = "+" + str(int(dec)) + ":" + str(int(dec%1*60)) + ":" + str(round(dec%1*60%1*60, 1)) # convert from decimal into dms
-                            else:
-                                dec_string = str(int(dec)) + ":" + str(int(dec%1*60)) + ":" + str(round(dec%1*60%1*60, 1)) # convert from decimal into dms
+                            dec_string = "%+02d:%02d:%02d" % (int(dec), int(dec%1*60), round(dec%1*60%1*60, 1))
                             ra = float(RA_raw)/2147483648.0 *12.0
-                            ra_string = str(int(ra)) + ":" + str(int(ra%1*60)) + ":" + str(round(ra%1*60%1*60, 1)) # convert from decimal into hms
-                            telescope.set_status("Goto command received (%s %s)" % (ra_string,dec_string))
+                            ra_string  = "%02d:%02d:%02d"  % (int(ra),  int(ra%1*60),  round(ra%1*60%1*60, 1)) 
+                            telescope.set_status("Received from stellarium: %s %s" % (ra_string,dec_string))
+                            telescope.send('!CStr' + ra_string + ';')
+                            telescope.send('!CStd' + dec_string + ';')
+                            if telescope.stellarium_mode==0: #align
+                                telescope.align_from_target()
+                            else: #goto
+                                telescope.go_to_target()
                         elif len(data)==0:
                             continue
                         else:
@@ -110,7 +114,8 @@ class Menu():
 
 class Status():                                                          
     def __init__(self):
-        self.window_status = curses.newwin(5,67,18,2)                                  
+        ypos = 4+telescope.menu.window.getmaxyx()[0]
+        self.window_status = curses.newwin(6,67,ypos,2)                                  
         
         self.last_telescope_update = 0
         self.telescope_state= [
@@ -121,12 +126,14 @@ class Status():
             ['Target right ascension',       '!CGtr;', ""],
             ['Target declination',           '!CGtd;', ""]
         ]
-        self.window_telescope = curses.newwin(3+len(self.telescope_state),67,23,2)                                  
+        ypos += self.window_status.getmaxyx()[0]
+        self.window_telescope = curses.newwin(3+len(self.telescope_state),67,ypos,2)                                  
         
         self.maxmessages = 5;
         self.messages = []
         self.push_message("PTCS initialized.")
-        self.window_messages = curses.newwin(4+self.maxmessages,67,32,2)                                  
+        ypos += self.window_telescope.getmaxyx()[0]
+        self.window_messages = curses.newwin(4+self.maxmessages,67,ypos,2)                                  
 
     def push_message(self,message):
         if len(message)>0:
@@ -140,13 +147,13 @@ class Status():
         self.window_status.border(0)
         # Time
         self.window_status.addstr(1, 2, "Time (UTC)")                    
-        self.window_status.addstr(1, 15, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()))                    
+        self.window_status.addstr(1, 19, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()))                    
         # Port
         self.window_status.addstr(2, 2, "Serial port")                    
         portname = "Not open"
         if telescope.serialport:
             portname = telescope.serialport.name
-        self.window_status.addstr(2, 15, portname )                    
+        self.window_status.addstr(2, 19, portname )                    
         # Server
         self.window_status.addstr(3, 2, "Server")                    
         serverstatus = "Not running"
@@ -155,7 +162,14 @@ class Status():
                 serverstatus = "Connected" 
             else:
                 serverstatus = "Waiting for connection" 
-        self.window_status.addstr(3, 15, serverstatus )                    
+        self.window_status.addstr(3, 19, serverstatus )                    
+        self.window_status.addstr(4, 2, "Stellarium mode")                    
+        if telescope.stellarium_mode==0:
+            stellarium_mode = "Align to next coordinates"
+        else:
+            stellarium_mode = "Go to next coordinates"
+        self.window_status.addstr(4, 19, stellarium_mode )                    
+
         self.window_status.refresh()
         
         # Status Messages
@@ -206,6 +220,7 @@ class Telescope():
         self.socket = None
         self.serialport = None
         self.logfilename = "observations.log"
+        self.stellarium_mode = 0  # align
         self.screen = stdscreen                                              
         curses.curs_set(0)
         self.screen.addstr(1, 2, "UTSC | PTCS", curses.A_BOLD)
@@ -217,12 +232,13 @@ class Telescope():
                 ('beep', curses.beep),                                       
                 ('flash', curses.flash),                                     
                 ]                                                            
-        self.status = Status()                       
-        self.status.display()
         self.menu = Menu()                       
+        self.status = Status()                       
         self.menu.display()
         
-    
+    def toggle_stellarium_mode(self):
+        self.stellarium_mode = not self.stellarium_mode
+
     def start_server(self):
         if self.socket == None:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -234,6 +250,7 @@ class Telescope():
                 self.set_status("Server waiting for connection on port %d."%port)
             except socket.error as e:
                 self.set_status("Socket error (%s)"%e.strerror)
+                self.socket = None
         else:
             self.set_status("Server already running.")
         
