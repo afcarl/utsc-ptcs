@@ -5,13 +5,12 @@ import os
 import time
 import curses
 from curses.textpad import Textbox, rectangle
-import SocketServer
+import socket
 import struct
 import time
 
 class Menu():                                                          
-    def __init__(self, telescope):
-        self.telescope = telescope
+    def __init__(self):
         self.position = 0                                                    
         self.menuitems = [
             ('o','Open serial port',                telescope.open_port), 
@@ -43,7 +42,7 @@ class Menu():
     def display(self):                                                       
         while True:                                                          
             self.window.border(0)
-            self.telescope.status.display()
+            telescope.status.display()
             for index, item in enumerate(self.menuitems):                        
                 if index == self.position:                                   
                     mode = curses.A_REVERSE                                  
@@ -67,13 +66,47 @@ class Menu():
                         self.position=index
                         m[2]()
 
-            if self.telescope.server is not None:
-                self.telescope.server.handle_request()
 
+            if telescope.socket is not None:
+                if telescope.conn is None:
+                    try:
+                        telescope.conn, addr = telescope.socket.accept()
+                        telescope.set_status("Connection established from %s:%d"% addr)
+                    except socket.error as e:
+                        pass
+                else:
+                    try:
+                        data = telescope.conn.recv(1024)
+                        telescope.set_status("Data received")
+                        """ Unpack the data recieved from stellarium, and converts into coordinates in RA and DEC"""
+                        print command
+                        data = struct.unpack('<hhQIi',command)
+                        RA_raw = data[-2]  # a value of 0x100000000 = 0x0 means 24h=0h,
+                                           # a value of 0x80000000 means 12h
+                                           # 12h = 2147483648 
+                        DEC_raw = data[-1] # a value of -0x40000000 means -90 degrees
+                                           # a value of 0x0 means 0 degrees
+                                           #  a value of 0x40000000 means 90 degrees
+                                           # 90d = 1073741824
+                        dec = float(DEC_raw)/1073741824.0*90.0
+                        if dec > 0:
+                            dec_string = "+" + str(int(dec)) + ":" + str(int(dec%1*60)) + ":" + str(round(dec%1*60%1*60, 1)) # convert from decimal into dms
+                        else:
+                            dec_string = str(int(dec)) + ":" + str(int(dec%1*60)) + ":" + str(round(dec%1*60%1*60, 1)) # convert from decimal into dms
+                        ra = float(RA_raw)/2147483648.0 *12.0
+                        ra_string = str(int(ra)) + ":" + str(int(ra%1*60)) + ":" + str(round(ra%1*60%1*60, 1)) # convert from decimal into hms
+                        return (ra_string,dec_string)
+
+
+
+
+                    except socket.error as e:
+                        pass
+
+                 
 
 class Status():                                                          
-    def __init__(self, telescope):
-        self.telescope = telescope
+    def __init__(self):
         self.window = curses.newwin(8,67,18,2)                                  
         self.message = "PTCS initialized."
         self.last_telescope_update = 0
@@ -101,14 +134,14 @@ class Status():
         # Port
         self.window.addstr(2, 2, "Port")                    
         portname = "Not open"
-        if self.telescope.serialport:
-            portname = self.telescope.serialport.name
+        if telescope.serialport:
+            portname = telescope.serialport.name
         self.window.addstr(2, 15, portname )                    
         # Server
         self.window.addstr(3, 2, "Server")                    
         serverstatus = "Not running"
-        if self.telescope.server:
-            serverstatus = "Running (%s:%d)" % self.telescope.server.server_address
+        if telescope.socket is not None:
+            serverstatus = "Running " 
         self.window.addstr(3, 15, serverstatus )                    
         # Status Text
         self.window.addstr(4, 2, "---------------------------------------------------")                    
@@ -120,7 +153,7 @@ class Status():
         self.window_telescope.clear()
         self.window_telescope.border(0)
         
-        if self.telescope.serialport is not None or True:
+        if telescope.serialport is not None or True:
             if time.time() - self.last_telescope_update > 2.: # only update the infos every 2 seconds
                 self.last_telescope_update = time.time()
                 # TODO UPDATE Telescope state
@@ -134,55 +167,26 @@ class Status():
 
     def get_telescope_status(self):
 
-        self.telescope.serialport.readline()
-        self.telescope.serialport.write('!AGas;') # GetAlignmentState
-        self.telescope.serialport.write('!AGai;') # GetAlginmentSide
-        self.telescope.serialport.write('!CGra;') # GetRA
-        self.telescope.serialport.write('!CGde;') # GetDec
-        self.telescope.serialport.write('!CGtr;') # GetTargetRA
-        self.telescope.serialport.write('!CGtd;') # GetTargetDec
-        f = self.telescope.serialport.readline()
+        telescope.serialport.readline()
+        telescope.serialport.write('!AGas;') # GetAlignmentState
+        telescope.serialport.write('!AGai;') # GetAlginmentSide
+        telescope.serialport.write('!CGra;') # GetRA
+        telescope.serialport.write('!CGde;') # GetDec
+        telescope.serialport.write('!CGtr;') # GetTargetRA
+        telescope.serialport.write('!CGtd;') # GetTargetDec
+        f = telescope.serialport.readline()
         
         return [a, b, c, d, e, f]
 
 
-class Server(SocketServer.BaseRequestHandler):
-    def handle(self):
-        self.data = self.request.recv(1024).strip()
-        print "{} wrote:".format(self.client_address[0])
-        print self.data
 
-#    def __init__(self,telescope):
-#        self.telescope = telescope
-#        self.running = False
-#        self.conn = None
-#        self.socket = None
-#        self.TCP_IP = '127.0.0.1'
-#        self.TCP_PORT = 10001
-#        BUFFER_SIZE = 1024  # Normally 1024, but we want fast response
-#
-#    def toggle(self):
-#        if self.running:
-#            self.close()
-#        else:
-#            self.open()
-#
-#    def open(self):
-#        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-#        self.socket.bind((self.TCP_IP, self.TCP_PORT))
-#        self.socket.settimeout(None)
-#        self.socket.listen(1)
-#        self.conn, self.addr = self.socket.accept()
-#        self.running = True
-#        self.telescope.set_status("Server port open.")
-#    def close(self):
-#        self.running = False
-#        conn.close()
-#        self.telescope.set_status("Server port closed.")
-
+telescope = None    # Singleton
 class Telescope():
     def __init__(self, stdscreen):
-        self.server = None
+        global telescope
+        telescope = self
+        self.conn = None
+        self.socket = None
         self.serialport = None
         self.logfilename = "observations.log"
         self.screen = stdscreen                                              
@@ -196,16 +200,19 @@ class Telescope():
                 ('beep', curses.beep),                                       
                 ('flash', curses.flash),                                     
                 ]                                                            
-        self.status = Status(self)                       
+        self.status = Status()                       
         self.status.display()
-        self.menu = Menu(self)                       
+        self.menu = Menu()                       
         self.menu.display()
+        
     
     def toggle_server(self):
-        if self.server == None:
-            self.server = SocketServer.TCPServer(("127.0.0.1", 10001), Server)
-            self.server.timeout = 0.001
-            self.set_status("Server started.")
+        if self.conn == None:
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.bind(("127.0.0.1", 10001))
+            self.socket.listen(1)
+            self.socket.setblocking(0)
+            self.set_status("Server waiting for connection.")
         else:
             self.server = None
             self.set_status("Server shut down.")
@@ -314,118 +321,36 @@ if __name__ == '__main__':
 exit()
 current_info = [';']
 
-# Server stuff
-
-
-
-
-def current_info_box():
-    if current_info == [';']:
-        pass
-    else:
-        new_c_i = []
-        for i in range(len(current_info)):
-            x = manage_string(current_info[i])
-            new_c_i.append(x)
-        for i in range(len(current_info)):
-            screen.addstr(i + 25, 35, new_c_i[i])
-
-
-def manage_string(string):
-    new_string = ''
-    for i in string:
-        if i != ';':
-            new_string += i
-        else:
-            break
-    
-    return new_string
-
-
 
 def unpack_command(command):
-    """ Unpack the data recieved from stellarium, and converts into coordinates in RA and DEC"""
-    print command
-    data = struct.unpack('<hhQIi',command)
-    RA_raw = data[-2]  # a value of 0x100000000 = 0x0 means 24h=0h,
-                       # a value of 0x80000000 means 12h
-                       # 12h = 2147483648 
-    DEC_raw = data[-1] # a value of -0x40000000 means -90 degrees
-                       # a value of 0x0 means 0 degrees
-                       #  a value of 0x40000000 means 90 degrees
-                       # 90d = 1073741824
-    dec = float(DEC_raw)/1073741824.0*90.0
-    if dec > 0:
-        dec_string = "+" + str(int(dec)) + ":" + str(int(dec%1*60)) + ":" + str(round(dec%1*60%1*60, 1)) # convert from decimal into dms
-    else:
-        dec_string = str(int(dec)) + ":" + str(int(dec%1*60)) + ":" + str(round(dec%1*60%1*60, 1)) # convert from decimal into dms
-    ra = float(RA_raw)/2147483648.0 *12.0
-    ra_string = str(int(ra)) + ":" + str(int(ra%1*60)) + ":" + str(round(ra%1*60%1*60, 1)) # convert from decimal into hms
-    return (ra_string,dec_string)
 
-
-
-
-conn = None
-addr = None
-server_running = False
-stell_align = False
-RA = None
-DEC = None
-
-good = True
-while good: 
-
-    for i in range(len(help_list)):
-        screen.addstr(i + 3, 4, help_list[i])
-    for i in range(len(current_info_titles)):
-        x = i+25
-        if x <= screen.getmaxyx()[0]:
-            screen.addstr(i + 25, 4, current_info_titles[i])
-    current_info_box()
-    current_time = time.time()
-    if serialport is not None:
-        if current_time - start_time > 2:
-            start_time = current_time # only update the infos every 2 seconds
-    screen.refresh()
-    key = screen.getch()
 
 ##########################
 # Server stuff
-    if server_running:
-        data = None
-        try:
-            data = conn.recv(BUFFER_SIZE)
-        except: # connection timeout, assume no data sent
-            data = None
-        if data is not None:
-            RA, DEC = unpack_command(data) 
-            data = None
-            #conn.send(data)  TODO: return to stellarium the current RA and DEC from the telescope
-            if stell_align and DEC is not None and RA is not None:
-                stell_align = False
-                print "Aligning"
-                serialport.write('!CStd' + DEC + ';')
-                alignDEC = DEC
-                print serialport.readline()
-                serialport.write('!CStr' + RA + ';')
-                alignRA = RA
-                print serialport.readline()
-                serialport.write('!AFrn;')
-                print serialport.readline()
-                print "Alignment complete"
-            elif DEC is not None and RA is not None:
-                print "Go to object"
-                serialport.write('!CStd' + DEC + ';')
-                print serialport.readline()
-                serialport.write('!CStr' + RA + ';')
-                print serialport.readline()
-                serialport.write('!GTrd;')
-                print serialport.readline()
-                print "goto complete"
+if data is not None:
+    RA, DEC = unpack_command(data) 
+    data = None
+    #conn.send(data)  TODO: return to stellarium the current RA and DEC from the telescope
+    if stell_align and DEC is not None and RA is not None:
+        stell_align = False
+        print "Aligning"
+        serialport.write('!CStd' + DEC + ';')
+        alignDEC = DEC
+        print serialport.readline()
+        serialport.write('!CStr' + RA + ';')
+        alignRA = RA
+        print serialport.readline()
+        serialport.write('!AFrn;')
+        print serialport.readline()
+        print "Alignment complete"
+    elif DEC is not None and RA is not None:
+        print "Go to object"
+        serialport.write('!CStd' + DEC + ';')
+        print serialport.readline()
+        serialport.write('!CStr' + RA + ';')
+        print serialport.readline()
+        serialport.write('!GTrd;')
+        print serialport.readline()
+        print "goto complete"
 
 
-##########################    
-# Main comamnds
-
-    
