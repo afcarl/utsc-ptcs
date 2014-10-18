@@ -18,9 +18,9 @@ class Menu(object):
         self.position = 0                                                    
         self.menuitems = [
             ('o','Open Port',                   telescope.open_port), 
-            ('e','Set Alignment Side',          None), 
-            ('r','Target Right Ascension',      None), 
-            ('d','Target Declination',          None), 
+            ('e','Set Alignment Side',          telescope.set_alignment_side), 
+            ('r','Target Right Ascension',      telescope.set_target_rightascension), 
+            ('d','Target Declination',          telescope.set_target_declination), 
             ('a','Align from Target/(align from next stellarium slew)',None), 
             ('g','GoTo Target',                 None), 
             ('u','Update Current Info',         None),
@@ -88,7 +88,7 @@ class Status(object):
         if self.telescope.port:
             portname = self.telescope.port.name
         self.window.addstr(2, 22, portname )                    
-        # Status
+        # Status Text
         self.window.addstr(3, 2, "---------------------------------------------------")                    
         self.window.addstr(4, 2, "Status:")                    
         self.window.addstr(4, 22, self.message)                    
@@ -139,12 +139,37 @@ class Telescope():
             self.set_status("Opening serial port failed.")
             self.port = None
     
+    def send(self,data):
+        if len(data)<1:
+            return
+        if self.port is not None:
+            self.port.write(data)
+            self.set_status("Sent '%s' to telescope."%data)
+        else:
+            self.set_status("Did NOT send data to telescope (port not open).")
+    
+    def set_alignment_side(self):
+        direction = self.get_param("Set alignment side [West/East]")
+        if direction == "West" or direction == "East": 
+            self.send('!ASas' + direction + ';')
+        else:
+            self.set_status("Not a valid alignment side.")
+
+    def set_target_rightascension(self):
+        ra = self.get_param("Set target Right Ascension [hh:mm:dd]")
+        if len(ra)>1:
+            self.send('!CStr' + ra + ';')
+        else:
+            self.set_status("Did not receive user input.")
+
     def set_target_declination(self):
         dec = self.get_param("Set target Declination [+dd:mm:ss]")
-        if self.port is not None:
-            self.port.write('!CStd' + dec + ';')
+        if len(dec)>1:
+            self.send('!CStd' + dec + ';')
         else:
-            self.set_status
+            self.set_status("Did not receive user input.")
+
+    
 
 if __name__ == '__main__':                                                       
     curses.wrapper(Telescope)
@@ -340,18 +365,7 @@ while good:
         good = False
 
 
-    # Set target right ascension
-    if key == ord('r'):
-        ra = get_param("Set target Right Ascension [hh:mm:dd]")
-        if port is not None:
-             port.write('!CStr' + ra + ';')
 
-    # Set alignment side
-    if key == ord('e'):
-        direction = get_param("Set alignment side [West/East]")
-        if direction == "West" or direction == "East": # Check for valid input
-            if port is not None:
-                 port.write('!ASas' + direction + ';')
 
     # Align from target
     if key == ord('a'):
