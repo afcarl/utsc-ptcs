@@ -92,7 +92,7 @@ class Menu():
                 if telescope.conn is None:
                     try:
                         telescope.conn, addr = telescope.socket.accept()
-                        telescope.set_status("Connection established from %s:%d."% addr)
+                        telescope.push_message("Connection established from %s:%d."% addr)
                     except socket.error as e:
                         pass
                 else:
@@ -100,29 +100,18 @@ class Menu():
                         data = telescope.conn.recv(1024)
                         if len(data)==20:   # goto command
                             data = struct.unpack('<hhQIi',data)
-                            RA_raw = data[-2]  # a value of 0x100000000 = 0x0 means 24h=0h,
-                                               # a value of 0x80000000 means 12h
-                                               # 12h = 2147483648 
-                            DEC_raw = data[-1] # a value of -0x40000000 means -90 degrees
-                                               # a value of 0x0 means 0 degrees
-                                               #  a value of 0x40000000 means 90 degrees
-                                               # 90d = 1073741824
                             ra_string, dec_string = ra_raw2str(data[-2]), dec_raw2str(data[-1])
-                            telescope.set_status("Received from stellarium: %s %s" % (ra_string,dec_string))
-                            telescope.set_status("Received from stellarium: %s %s" % (data[-1], data[-2]))
-                            telescope.set_status("Received from stellarium: %s %s" % (dec_str2raw(dec_string), ra_str2raw(ra_string)))
+                            telescope.push_message("Received from stellarium: %s %s" % (ra_string,dec_string))
                             telescope.send('!CStr' + ra_string + ';')
                             telescope.send('!CStd' + dec_string + ';')
                             if telescope.stellarium_mode==0: #align
                                 telescope.align_from_target()
                             else: #goto
                                 telescope.go_to_target()
-                            response = struct.pack('<hhQIii',24,data[1],data[2],data[3],data[4],0)
-                            telescope.conn.send(response)
                         elif len(data)==0:
                             pass
                         else:
-                            telescope.set_status("Unknown command received of length %d."%len(data))
+                            telescope.push_message("Unknown command received of length %d."%len(data))
                     except socket.error as e:
                         pass
 
@@ -198,15 +187,12 @@ class Status():
         self.window_telescope.clear()
         self.window_telescope.border(0)
         
-        if telescope.serialport is not None:
-            if time.time() - telescope.last_telescope_update > 2.: # only update the infos every 2 seconds
-                telescope.last_telescope_update = time.time()
-                self.get_telescope_status()
-                if telescope.socket is not None:
-                    if telescope.conn is None:
-                        self.push_message("sending info to stellarium")
-
-
+        if time.time() - telescope.last_telescope_update > 2.: # only update the infos every 2 seconds
+            telescope.last_telescope_update = time.time()
+            self.get_telescope_status()
+            if telescope.socket is not None:
+                if telescope.conn is not None:
+                    telescope.send_coordinates_to_stellarium()
         self.window_telescope.addstr(1, 2, "Telescope readout", curses.A_BOLD)                    
         for (index,element) in enumerate(self.telescope_states):
             self.window_telescope.addstr(index+2, 4, element[0])                    
@@ -264,15 +250,26 @@ class Telescope():
                 self.socket.bind(("", port))
                 self.socket.listen(1)
                 self.socket.setblocking(0)
-                self.set_status("Server waiting for connection on port %d."%port)
+                self.push_message("Server waiting for connection on port %d."%port)
             except socket.error as e:
-                self.set_status("Socket error (%s)"%e.strerror)
+                self.push_message("Socket error (%s)"%e.strerror)
                 self.socket = None
         else:
-            self.set_status("Server already running.")
-        
+            self.push_message("Server already running.")
+
+    def send_coordinates_to_stellarium(self): 
+        try:
+            for (desc, command, value) in self.status.telescope_states:
+                if command == '!CGra;':
+                    ra = ra_str2raw(value)
+                if command == '!CGde;':
+                    dec = dec_str2raw(value)
+            data = struct.pack('<hhQIii',24,0,int(round(time.time() * 1000)), ra, dec, 0)
+            telescope.conn.send(data)
+        except:
+            pass
     
-    def set_status(self, message):
+    def push_message(self, message):
         self.status.push_message(message)
 
     def get_param(self, prompt):
@@ -297,9 +294,9 @@ class Telescope():
             if port_name == '':
                 port_name = default_port_name
             self.serialport = serial.Serial(port_name, 19200, timeout = 0.1) 
-            self.set_status("Successfully opened serial port.")
+            self.push_message("Successfully opened serial port.")
         except:
-            self.set_status("Opening serial port failed.")
+            self.push_message("Opening serial port failed.")
             self.serialport = None
     
     def send(self,data):
@@ -307,10 +304,10 @@ class Telescope():
             return False
         elif self.serialport is not None:
             self.serialport.write(data)
-            self.set_status("Sent '%s' to telescope."%data)
+            self.push_message("Sent '%s' to telescope."%data)
             return True
         else:
-            self.set_status("Did NOT send data to telescope (port not open).")
+            self.push_message("Did NOT send data to telescope (port not open).")
             return False
     
     def set_alignment_side(self):
@@ -318,21 +315,21 @@ class Telescope():
         if direction == "West" or direction == "East": 
             self.send('!ASas' + direction + ';')
         else:
-            self.set_status("Not a valid alignment side.")
+            self.push_message("Not a valid alignment side.")
 
     def set_target_rightascension(self):
         ra = self.get_param("Set target Right Ascension [hh:mm:dd]")
         if len(ra)>0:
             self.send('!CStr' + ra + ';')
         else:
-            self.set_status("Did not receive user input.")
+            self.push_message("Did not receive user input.")
 
     def set_target_declination(self):
         dec = self.get_param("Set target Declination [+dd:mm:ss]")
         if len(dec)>0:
             self.send('!CStd' + dec + ';')
         else:
-            self.set_status("Did not receive user input.")
+            self.push_message("Did not receive user input.")
 
     def align_from_target(self):
         self.send('!AFrn;')
@@ -352,7 +349,7 @@ class Telescope():
             command = "!" + command + ";"
             self.send(command)
         else:
-            self.set_status("Did not receive user input.")
+            self.push_message("Did not receive user input.")
 
     def write_telescope_readout(self):
         with open(self.logfilename, 'a') as f:
@@ -360,11 +357,17 @@ class Telescope():
             for (desc, command, value) in self.status.telescope_states:
                 f.write(value+"\t")
             f.write(value+"\n")
-            self.set_status("Telescope readout saved.")
+            self.push_message("Telescope readout saved.")
             f.close()
     def exit(self):
         if self.socket is not None:
-            socket.close()
+            if self.conn is not None:
+                self.conn.close()
+                try:
+                    sddocket.shutdown(socket.SHUT_RD)
+                except:
+                    pass
+            self.socket.close()
         if self.serialport is not None:
             if self.serialport.isOpen():
                 self.serialport.close()
