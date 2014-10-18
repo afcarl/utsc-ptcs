@@ -9,7 +9,125 @@ import socket
 import struct
 
 
-port = None
+class Menu(object):                                                          
+    def __init__(self, telescope):
+        self.telescope = telescope
+        self.window = curses.newwin(17,65,2,2)                                  
+        self.window.keypad(1)                                                
+        
+        self.position = 0                                                    
+        self.menuitems = [
+            ('o','Open Port',                   telescope.open_port), 
+            ('e','Set Alignment Side',          None), 
+            ('r','Target Right Ascension',      None), 
+            ('d','Target Declination',          None), 
+            ('a','Align from Target/(align from next stellarium slew)',None), 
+            ('g','GoTo Target',                 None), 
+            ('u','Update Current Info',         None),
+            ('v','Void alignment',              None),
+            ('b','Return to previous target',   None),
+            ('s','Open/close server commands',  None),
+            ('f','Change output filename',      None),
+            ('p','Print observation data',      None),
+            ('c','Custom commands',             None),
+            ('q','Exit',                        exit)
+            ]
+    
+    def navigate(self, n):                                                   
+        self.position += n                                                   
+        if self.position < 0:                                                
+            self.position = 0                                                
+        elif self.position >= len(self.menuitems):                               
+            self.position = len(self.menuitems)-1                                
+
+    def display(self):                                                       
+        while True:                                                          
+            self.window.border(0)
+            self.telescope.status.display()
+            for index, item in enumerate(self.menuitems):                        
+                if index == self.position:                                   
+                    mode = curses.A_REVERSE                                  
+                else:                                                        
+                    mode = curses.A_NORMAL                                   
+
+                msg = ' %s - %s ' % (item[0],item[1])                            
+                self.window.addstr(1+index, 1, msg, mode)                    
+
+            key = self.window.getch()                                        
+
+            if key in [curses.KEY_ENTER, ord('\n')]:                         
+                self.menuitems[self.position][2]()                           
+            elif key == curses.KEY_UP:                                       
+                self.navigate(-1)                                            
+            elif key == curses.KEY_DOWN:                                     
+                self.navigate(1)                                             
+            else:
+                for m in self.menuitems:
+                    if ord(m[0])==key:
+                        m[2]()
+
+
+class Status(object):                                                          
+    def __init__(self, telescope):
+        self.telescope = telescope
+        self.window = curses.newwin(4,65,22,2)                                  
+        self.window.keypad(1)                                                
+        self.message = "Window initialized."
+        
+    def display(*args):                                                       
+        self = args[0]
+        if len(args)>1:
+            self.message = args[1]
+        self.window.border(0)
+        self.window.addstr(1, 2, "Status:")                    
+        self.window.addstr(2, 2, self.message)                    
+        self.window.refresh()
+
+
+class Telescope():
+    def __init__(self, stdscreen):
+        self.port = None
+        self.screen = stdscreen                                              
+        stdscreen.border()
+        self.screen.immedok(True)
+        main_menu_items = [                                                  
+                ('beep', curses.beep),                                       
+                ('flash', curses.flash),                                     
+                ]                                                            
+        self.status = Status(self)                       
+        self.status.display()
+        self.menu = Menu(self)                       
+        self.menu.display()
+
+    def set_status(self, message):
+        self.status.display(message)
+
+    def get_param(self, prompt):
+        win = curses.newwin(5, 60, 5, 5)
+        win.border(0)
+        win.addstr(1,2,prompt)
+        r = win.getstr(3,2,55)
+        self.screen.clear()
+        return r
+
+    def open_port(self):
+        self.set_status("Trying to open port.")
+        if os.uname()[0]=="Darwin":
+            default_port_name = '/dev/tty.usbserial'
+        else:
+            default_port_name = '/dev/ttyUSB0'
+        port_name = self.get_param("Set port to open [leave blank for '"+default_port_name+"']")
+        try:
+            if port_name == '':
+                port_name = default_port_name
+            self.port = serial.Serial(port_name, 19200, timeout = 0.1) 
+        except:
+            self.port = None
+
+if __name__ == '__main__':                                                       
+    curses.wrapper(Telescope)
+print "done"
+exit()
 current_info = [';']
 
 # Server stuff
@@ -20,19 +138,6 @@ BUFFER_SIZE = 1024  # Normally 1024, but we want fast response
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.bind((TCP_IP, TCP_PORT))
 
-def open_port():
-    if os.uname()[0]=="Darwin":
-         default_port_name = '/dev/tty.usbserial'
-    else:
-         default_port_name = '/dev/ttyUSB0'
-    port_name = get_param("Set port to open [leave blank for '"+default_port_name+"']")
-    try:
-         if port_name == '':
-              port_name = default_port_name
-         ser = serial.Serial(port_name, 19200, timeout = 0.1) # try a baud rate of 9600, or 4800... also look into the API for the telescope controls
-         return ser
-    except:
-         return None
 
 def current_info_box():
     if current_info == [';']:
@@ -95,11 +200,6 @@ def manage_string(string):
     
     return new_string
 
-def get_param(prompt):
-    win = curses.newwin(5, 60, 5, 5)
-    win.border(0)
-    win.addstr(1,2,prompt)
-    return win.getstr(3,2,55)
 
 def open_server():
     s.listen(1)
@@ -133,17 +233,6 @@ def custom_command(command):
     port.write(command)
     print port.readline()
 
-help_list = ['o - Open Port', 'e - Set Alignment Side', 
-             'r - Target Right Ascension', 'd - Target Declination', 
-             'a - Align from Target/(align from next stellarium slew)', 
-             'g - GoTo Target', 'u - Update Current Info',
-             'v - Void alignment',
-             'b - Return to previous target',
-             's - Open/close server commands',
-             'f - Change output filename',
-             'p - Print observation data',
-             'c - Custom commands',
-         '------------','q - Exit']
 
 current_info_titles = ['Alignment State:', 'Side of the Sky:',
                        'Current Right Ascension:', 'Current Declination:',
@@ -309,3 +398,4 @@ while good:
         current_info = get_status()
 
 curses.endwin()
+s.close()
