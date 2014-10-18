@@ -14,16 +14,17 @@ class Menu(object):
         self.telescope = telescope
         self.window = curses.newwin(17,65,2,2)                                  
         self.window.keypad(1)                                                
+        self.window.timeout(100)
         
         self.position = 0                                                    
         self.menuitems = [
-            ('o','Open Port',                   telescope.open_port), 
-            ('e','Set Alignment Side',          telescope.set_alignment_side), 
-            ('r','Target Right Ascension',      telescope.set_target_rightascension), 
-            ('d','Target Declination',          telescope.set_target_declination), 
-            ('a','Align from Target/(align from next stellarium slew)',None), 
-            ('g','GoTo Target',                 None), 
-            ('u','Update Current Info',         None),
+            ('o','Open port',                   telescope.open_port), 
+            ('e','Set alignment side',          telescope.set_alignment_side), 
+            ('r','Target right ascension',      telescope.set_target_rightascension), 
+            ('d','Target declination',          telescope.set_target_declination), 
+            ('a','Align from target/next stellarium slew', telescope.align_from_target), 
+            ('g','Go to target',                telescope.go_to_target), 
+            ('u','Update current info',         None),
             ('v','Void alignment',              None),
             ('b','Return to previous target',   None),
             ('s','Open/close server commands',  None),
@@ -81,17 +82,17 @@ class Status(object):
         self.window.border(0)
         # Time
         self.window.addstr(1, 2, "UTC Time:")                    
-        self.window.addstr(1, 22, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()))                    
+        self.window.addstr(1, 15, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()))                    
         # Port
         self.window.addstr(2, 2, "Port:")                    
         portname = "Not open"
         if self.telescope.port:
             portname = self.telescope.port.name
-        self.window.addstr(2, 22, portname )                    
+        self.window.addstr(2, 15, portname )                    
         # Status Text
         self.window.addstr(3, 2, "---------------------------------------------------")                    
         self.window.addstr(4, 2, "Status:")                    
-        self.window.addstr(4, 22, self.message)                    
+        self.window.addstr(4, 15, self.message)                    
         self.window.refresh()
 
 
@@ -141,12 +142,14 @@ class Telescope():
     
     def send(self,data):
         if len(data)<1:
-            return
-        if self.port is not None:
+            return False
+        elif self.port is not None:
             self.port.write(data)
             self.set_status("Sent '%s' to telescope."%data)
+            return True
         else:
             self.set_status("Did NOT send data to telescope (port not open).")
+            return False
     
     def set_alignment_side(self):
         direction = self.get_param("Set alignment side [West/East]")
@@ -169,7 +172,11 @@ class Telescope():
         else:
             self.set_status("Did not receive user input.")
 
-    
+    def align_from_target(self):
+        self.send('!AFrn;')
+
+    def go_to_target(self):
+        self.send('!GTrd;')
 
 if __name__ == '__main__':                                                       
     curses.wrapper(Telescope)
@@ -292,10 +299,6 @@ server_running = False
 stell_align = False
 RA = None
 DEC = None
-alignRA = None
-alignDEC = None
-tarRA = None
-tarDEC = None
 filename = "observations.txt"
 screen = curses.initscr()
 screen.timeout(50) #stops getch() from blocking
@@ -367,21 +370,6 @@ while good:
 
 
 
-    # Align from target
-    if key == ord('a'):
-        if port is not None:
-            if server_running:
-                stell_align = True
-            else:
-                port.write('!AFrn;')
-                alignRA = tarRA
-                alignDEC = tarDEC
-
-    # Goto target
-    if key == ord('g'):
-        if port is not None:
-             port.write('!GTrd;')
-             print port.readline()
     
     # Void alignment
     if key == ord('v'):
