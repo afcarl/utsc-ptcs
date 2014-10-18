@@ -7,7 +7,7 @@ import curses
 from curses.textpad import Textbox, rectangle
 import socket
 import struct
-
+import time
 
 class Menu(object):                                                          
     def __init__(self, telescope):
@@ -70,7 +70,7 @@ class Menu(object):
 class Status(object):                                                          
     def __init__(self, telescope):
         self.telescope = telescope
-        self.window = curses.newwin(4,65,22,2)                                  
+        self.window = curses.newwin(8,65,22,2)                                  
         self.window.keypad(1)                                                
         self.message = "Window initialized."
         
@@ -79,8 +79,19 @@ class Status(object):
         if len(args)>1:
             self.message = args[1]
         self.window.border(0)
-        self.window.addstr(1, 2, "Status:")                    
-        self.window.addstr(2, 2, self.message)                    
+        # Time
+        self.window.addstr(1, 2, "UTC Time:")                    
+        self.window.addstr(1, 22, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()))                    
+        # Port
+        self.window.addstr(2, 2, "Port:")                    
+        portname = "Not open"
+        if self.telescope.port:
+            portname = self.telescope.port.name
+        self.window.addstr(2, 22, portname )                    
+        # Status
+        self.window.addstr(3, 2, "---------------------------------------------------")                    
+        self.window.addstr(4, 2, "Status:")                    
+        self.window.addstr(4, 22, self.message)                    
         self.window.refresh()
 
 
@@ -104,9 +115,11 @@ class Telescope():
 
     def get_param(self, prompt):
         win = curses.newwin(5, 60, 5, 5)
+        curses.echo()
         win.border(0)
         win.addstr(1,2,prompt)
         r = win.getstr(3,2,55)
+        curses.noecho()
         self.screen.clear()
         return r
 
@@ -121,8 +134,17 @@ class Telescope():
             if port_name == '':
                 port_name = default_port_name
             self.port = serial.Serial(port_name, 19200, timeout = 0.1) 
+            self.set_status("Successfully opened serial port.")
         except:
+            self.set_status("Opening serial port failed.")
             self.port = None
+    
+    def set_target_declination(self):
+        dec = self.get_param("Set target Declination [+dd:mm:ss]")
+        if self.port is not None:
+            self.port.write('!CStd' + dec + ';')
+        else:
+            self.set_status
 
 if __name__ == '__main__':                                                       
     curses.wrapper(Telescope)
@@ -317,15 +339,6 @@ while good:
     if key == 27 or key == ord('q'): #27=ESC
         good = False
 
-    # Open port
-    if key == ord('o'):
-        port = open_port()
-
-    # Set target declination
-    if key == ord('d'):
-        dec = get_param("Set target Declination [+dd:mm:ss]")
-        if port is not None:
-            port.write('!CStd' + dec + ';')
 
     # Set target right ascension
     if key == ord('r'):
