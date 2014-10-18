@@ -1,311 +1,379 @@
 #!/usr/bin/python
 import serial
-import sys
 import os
 import time
 import curses
-from curses.textpad import Textbox, rectangle
 import socket
 import struct
+import time
 
-
-port = None
-current_info = [';']
-
-# Server stuff
-TCP_IP = '127.0.0.1'
-TCP_PORT = 10001
-BUFFER_SIZE = 1024  # Normally 1024, but we want fast response
-
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.bind((TCP_IP, TCP_PORT))
-
-def open_port():
-    if os.uname()[0]=="Darwin":
-         default_port_name = '/dev/tty.usbserial'
+## Conversion functions
+def dec_str2raw(s):
+    f = [float(i) for i in s.split(":")]
+    if f[0]<0.:
+        dec = f[0]-f[1]/60.-f[2]/60./60. 
     else:
-         default_port_name = '/dev/ttyUSB0'
-    port_name = get_param("Set port to open [leave blank for '"+default_port_name+"']")
-    try:
-         if port_name == '':
-              port_name = default_port_name
-         ser = serial.Serial(port_name, 19200, timeout = 0.1) # try a baud rate of 9600, or 4800... also look into the API for the telescope controls
-         return ser
-    except:
-         return None
+        dec = f[0]+f[1]/60.+f[2]/60./60. 
+    return int(dec*1073741824.0/90.0)
 
-def current_info_box():
-    if current_info == [';']:
-        pass
-    else:
-        new_c_i = []
-        for i in range(len(current_info)):
-            x = manage_string(current_info[i])
-            new_c_i.append(x)
-        for i in range(len(current_info)):
-            screen.addstr(i + 25, 35, new_c_i[i])
+def ra_str2raw(s):
+    f = [float(i) for i in s.split(":")]
+    ra = f[0]+f[1]/60.+f[2]/60./60.
+    return int(ra*2147483648.0/12.0)
 
-def get_status():
-     if port is not None:
-          port.readline()
-          port.write('!AGas;') # GetAlignmentState
-          a = port.readline()
-          port.write('!AGai;') # GetAlginmentSide
-          b = port.readline()
-          port.write('!CGra;') # GetRA
-          c = port.readline()
-          port.write('!CGde;') # GetDec
-          d = port.readline()
-          port.write('!CGtr;') # GetTargetRA
-          e = port.readline()
-          port.write('!CGtd;') # GetTargetDec
-          f = port.readline()
-          
-          #return str(port.readline())
-          return [a, b, c, d, e, f]
-     else:
-          nc = "Not connected."
-          return [nc,nc,nc,nc,nc,nc]
+def dec_raw2str(raw):
+    dec = float(raw)/1073741824.0*90.0
+    return "%+02d:%02d:%02d" % (int(dec), int(abs(dec)%1*60), round(abs(dec)%1*60%1*60, 1))
 
-def print_obs(name, alignra, aligndec):
-    if alignra is not None and aligndec is not None:
-        with open(name, 'a') as f:
-            port.readline()
-            port.write('!CGra;') # GetRA
-            curra = port.readline().split(';')[0]
-            port.write('!CGde;') # GetDec
-            curdec = port.readline().split(';')[0]
-            port.write('!CGtr;') # GetTargetRA
-            tarra = port.readline().split(';')[0]
-            port.write('!CGtd;') # GetTargetDec
-            tardec = port.readline().split(';')[0]
-            printstr = alignra + " " + aligndec+ " " + tarra+ " " + tardec+ " " + curra+ " " + curdec +"\n"
-            f.write(printstr)
-    else:
-        print "No alignment saved"
+def ra_raw2str(raw):
+    ra = float(raw)/2147483648.0 *12.0
+    return  "%02d:%02d:%02d" % (int(ra),  int(ra%1*60),  round(ra%1*60%1*60, 1)) 
+
+class Menu():                                                          
+    def __init__(self):
+        self.position = 0                                                    
+        self.menuitems = [
+            ('o','Open serial port',                telescope.open_port), 
+            ('e','Set alignment side',              telescope.set_alignment_side), 
+            ('r','Target right ascension',          telescope.set_target_rightascension), 
+            ('d','Target declination',              telescope.set_target_declination), 
+            ('a','Align from target',               telescope.align_from_target), 
+            ('g','Go to target',                    telescope.go_to_target), 
+            ('v','Void alignment',                  telescope.void_alignment),
+            ('b','Return to previous target',       telescope.previous_alignment),
+            ('s','Start Stellarium server',         telescope.start_server),
+            ('t','Toggle Stellarium mode',          telescope.toggle_stellarium_mode),
+            ('p','Write telescope readout to file', telescope.write_telescope_readout),
+            ('c','Execute custom command',          telescope.send_custom_command),
+            ('q','Exit',                            telescope.exit)
+            ]
         
-
-def manage_string(string):
-    new_string = ''
-    for i in string:
-        if i != ';':
-            new_string += i
-        else:
-            break
+        self.window = curses.newwin(len(self.menuitems)+2,67,4,2)                                  
+        self.window.keypad(1)                                                
+        self.window.timeout(100)    # in ms
+        
     
-    return new_string
+    def navigate(self, n):                                                   
+        self.position += n                                                   
+        if self.position < 0:                                                
+            self.position = 0                                                
+        elif self.position >= len(self.menuitems):                               
+            self.position = len(self.menuitems)-1                                
 
-def get_param(prompt):
-    win = curses.newwin(5, 60, 5, 5)
-    win.border(0)
-    win.addstr(1,2,prompt)
-    return win.getstr(3,2,55)
+    def display(self):                                                       
+        while True:                                                          
+            self.window.border(0)
+            telescope.status.display()
+            for index, item in enumerate(self.menuitems):                        
+                if index == self.position:                                   
+                    mode = curses.A_REVERSE                                  
+                else:                                                        
+                    mode = curses.A_NORMAL                                   
 
-def open_server():
-    s.listen(1)
-    print "Listening on", TCP_IP, TCP_PORT
-    conn,addr = s.accept()
-    conn.settimeout(1)
-    return (conn,addr)
+                msg = ' %s - %s ' % (item[0],item[1])                            
+                self.window.addstr(1+index, 1, msg, mode)                    
 
-def unpack_command(command):
-    """ Unpack the data recieved from stellarium, and converts into coordinates in RA and DEC"""
-    print command
-    data = struct.unpack('<hhQIi',command)
-    RA_raw = data[-2]  # a value of 0x100000000 = 0x0 means 24h=0h,
-                       # a value of 0x80000000 means 12h
-                       # 12h = 2147483648 
-    DEC_raw = data[-1] # a value of -0x40000000 means -90 degrees
-                       # a value of 0x0 means 0 degrees
-                       #  a value of 0x40000000 means 90 degrees
-                       # 90d = 1073741824
-    dec = float(DEC_raw)/1073741824.0*90.0
-    if dec > 0:
-        dec_string = "+" + str(int(dec)) + ":" + str(int(dec%1*60)) + ":" + str(round(dec%1*60%1*60, 1)) # convert from decimal into dms
-    else:
-        dec_string = str(int(dec)) + ":" + str(int(dec%1*60)) + ":" + str(round(dec%1*60%1*60, 1)) # convert from decimal into dms
-    ra = float(RA_raw)/2147483648.0 *12.0
-    ra_string = str(int(ra)) + ":" + str(int(ra%1*60)) + ":" + str(round(ra%1*60%1*60, 1)) # convert from decimal into hms
-    return (ra_string,dec_string)
+            key = self.window.getch()                                        
 
-def custom_command(command):
-    command = "!" + command + ";"
-    port.write(command)
-    print port.readline()
-
-help_list = ['o - Open Port', 'e - Set Alignment Side', 
-             'r - Target Right Ascension', 'd - Target Declination', 
-             'a - Align from Target/(align from next stellarium slew)', 
-             'g - GoTo Target', 'u - Update Current Info',
-             'v - Void alignment',
-             'b - Return to previous target',
-             's - Open/close server commands',
-             'f - Change output filename',
-             'p - Print observation data',
-             'c - Custom commands',
-         '------------','q - Exit']
-
-current_info_titles = ['Alignment State:', 'Side of the Sky:',
-                       'Current Right Ascension:', 'Current Declination:',
-                       'Target Right Ascension:', 'Target Declination:',
-                       ' ']
-
-conn = None
-addr = None
-server_running = False
-stell_align = False
-RA = None
-DEC = None
-alignRA = None
-alignDEC = None
-tarRA = None
-tarDEC = None
-filename = "observations.txt"
-screen = curses.initscr()
-screen.timeout(50) #stops getch() from blocking
-start_time = time.time()
-
-good = True
-while good: 
-
-    screen.clear()
-    screen.border(0)
-    screen.addstr(2, 2, "UTSC Python Telescope control system")
-    for i in range(len(help_list)):
-        screen.addstr(i + 3, 4, help_list[i])
-    for i in range(len(current_info_titles)):
-        x = i+25
-        if x <= screen.getmaxyx()[0]:
-            screen.addstr(i + 25, 4, current_info_titles[i])
-    current_info_box()
-    current_time = time.time()
-    if port is not None:
-        if current_time - start_time > 2:
-            current_info = get_status()
-            start_time = current_time # only update the infos every 2 seconds
-    screen.refresh()
-    key = screen.getch()
-
-##########################
-# Server stuff
-    if server_running:
-        data = None
-        try:
-            data = conn.recv(BUFFER_SIZE)
-        except: # connection timeout, assume no data sent
-            data = None
-        if data is not None:
-            RA, DEC = unpack_command(data) 
-            data = None
-            #conn.send(data)  TODO: return to stellarium the current RA and DEC from the telescope
-            if stell_align and DEC is not None and RA is not None:
-                stell_align = False
-                print "Aligning"
-                port.write('!CStd' + DEC + ';')
-                alignDEC = DEC
-                print port.readline()
-                port.write('!CStr' + RA + ';')
-                alignRA = RA
-                print port.readline()
-                port.write('!AFrn;')
-                print port.readline()
-                print "Alignment complete"
-            elif DEC is not None and RA is not None:
-                print "Go to object"
-                port.write('!CStd' + DEC + ';')
-                print port.readline()
-                port.write('!CStr' + RA + ';')
-                print port.readline()
-                port.write('!GTrd;')
-                print port.readline()
-                print "goto complete"
-
-
-##########################    
-# Main comamnds
-
-# Exit
-    if key == 27 or key == ord('q'): #27=ESC
-        good = False
-
-    # Open port
-    if key == ord('o'):
-        port = open_port()
-
-    # Set target declination
-    if key == ord('d'):
-        dec = get_param("Set target Declination [+dd:mm:ss]")
-        if port is not None:
-            port.write('!CStd' + dec + ';')
-
-    # Set target right ascension
-    if key == ord('r'):
-        ra = get_param("Set target Right Ascension [hh:mm:dd]")
-        if port is not None:
-             port.write('!CStr' + ra + ';')
-
-    # Set alignment side
-    if key == ord('e'):
-        direction = get_param("Set alignment side [West/East]")
-        if direction == "West" or direction == "East": # Check for valid input
-            if port is not None:
-                 port.write('!ASas' + direction + ';')
-
-    # Align from target
-    if key == ord('a'):
-        if port is not None:
-            if server_running:
-                stell_align = True
+            if key in [curses.KEY_ENTER, ord('\n')]:                         
+                self.menuitems[self.position][2]()                           
+            elif key == curses.KEY_UP:                                       
+                self.navigate(-1)                                            
+            elif key == curses.KEY_DOWN:                                     
+                self.navigate(1)                                             
             else:
-                port.write('!AFrn;')
-                alignRA = tarRA
-                alignDEC = tarDEC
+                for (index,m) in enumerate(self.menuitems):
+                    if ord(m[0])==key:
+                        self.position=index
+                        m[2]()
 
-    # Goto target
-    if key == ord('g'):
-        if port is not None:
-             port.write('!GTrd;')
-             print port.readline()
-    
-    # Void alignment
-    if key == ord('v'):
-        if port is not None:
-             port.write('!AVoi;')
 
-    # previous alignment
-    if key == ord('b'):
-        if port is not None:
-             port.write('!GTol;')
-    
-    # Open Server
-    if key == ord('s'):
-        if server_running:
-            server_running = False
-            print "Closing connection"
-            conn.close()
+            if telescope.socket is not None:
+                if telescope.conn is None:
+                    try:
+                        telescope.conn, addr = telescope.socket.accept()
+                        telescope.push_message("Connection established from %s:%d."% addr)
+                    except socket.error as e:
+                        pass
+                else:
+                    try:
+                        data = telescope.conn.recv(1024)
+                        if len(data)==20:   # goto command
+                            data = struct.unpack('<hhQIi',data)
+                            ra_string, dec_string = ra_raw2str(data[-2]), dec_raw2str(data[-1])
+                            telescope.push_message("Received from stellarium: %s %s" % (ra_string,dec_string))
+                            telescope.send('!CStr' + ra_string + ';')
+                            telescope.send('!CStd' + dec_string + ';')
+                            if telescope.stellarium_mode==0: #align
+                                telescope.align_from_target()
+                            else: #goto
+                                telescope.go_to_target()
+                        elif len(data)==0:
+                            pass
+                        else:
+                            telescope.push_message("Unknown command received of length %d."%len(data))
+                    except socket.error as e:
+                        pass
+
+
+class Status():                                                          
+    def __init__(self):
+        ypos = 4+telescope.menu.window.getmaxyx()[0]
+        self.window_status = curses.newwin(6,67,ypos,2)                                  
+        
+        self.telescope_states= [
+            ['Alignment state',              '!AGas;', ""],  
+            ['Side of the sky',              '!AGai;', ""],
+            ['Current right ascension',      '!CGra;', ""],
+            ['Current declination',          '!CGde;', ""],
+            ['Target right ascension',       '!CGtr;', ""],
+            ['Target declination',           '!CGtd;', ""]
+        ]
+        ypos += self.window_status.getmaxyx()[0]
+        self.window_telescope = curses.newwin(3+len(self.telescope_states),67,ypos,2)                                  
+        
+        self.maxmessages = 6;
+        self.messages = []
+        self.push_message("PTCS initialized.")
+        ypos += self.window_telescope.getmaxyx()[0]
+        self.window_messages = curses.newwin(3+self.maxmessages,67,ypos,2)                                  
+
+    def push_message(self,message):
+        if len(message)>0:
+            timestamp = time.strftime("%H:%M:%S", time.gmtime())                    
+            self.messages.insert(0,"%s %s" %(timestamp,message))
+            if len(self.messages)>self.maxmessages:
+                self.messages.pop()
+        
+    def display(self):                                                       
+        self.window_status.clear()
+        self.window_status.border(0)
+        # Time
+        self.window_status.addstr(1, 2, "Time (UTC)")                    
+        self.window_status.addstr(1, 19, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()))                    
+        # Port
+        self.window_status.addstr(2, 2, "Serial port")                    
+        portname = "Not open"
+        if telescope.serialport:
+            portname = telescope.serialport.name
+        self.window_status.addstr(2, 19, portname )                    
+        # Server
+        self.window_status.addstr(3, 2, "Server")                    
+        serverstatus = "Not running"
+        if telescope.socket is not None:
+            if telescope.conn is not None:
+                serverstatus = "Connected" 
+            else:
+                serverstatus = "Waiting for connection" 
+        self.window_status.addstr(3, 19, serverstatus )                    
+        self.window_status.addstr(4, 2, "Stellarium mode")                    
+        if telescope.stellarium_mode==0:
+            stellarium_mode = "Align to next coordinates"
         else:
-            conn, addr = open_server()
-            server_running = True
-            print "Server open"
+            stellarium_mode = "Go to next coordinates"
+        self.window_status.addstr(4, 19, stellarium_mode )                    
+
+        self.window_status.refresh()
+        
+        # Status Messages
+        self.window_messages.clear()
+        self.window_messages.border(0)
+        self.window_messages.addstr(1, 2, "Status messages", curses.A_BOLD)                    
+        for (index,message) in enumerate(self.messages):
+            self.window_messages.addstr(2+index, 4, message)                    
+        self.window_messages.refresh()
+        
+        
+        self.window_telescope.clear()
+        self.window_telescope.border(0)
+        
+        if time.time() - telescope.last_telescope_update > 2.: # only update the infos every 2 seconds
+            telescope.last_telescope_update = time.time()
+            self.get_telescope_status()
+            if telescope.socket is not None:
+                if telescope.conn is not None:
+                    telescope.send_coordinates_to_stellarium()
+        self.window_telescope.addstr(1, 2, "Telescope readout", curses.A_BOLD)                    
+        for (index,element) in enumerate(self.telescope_states):
+            self.window_telescope.addstr(index+2, 4, element[0])                    
+            self.window_telescope.addstr(index+2, 32, element[2])                    
+
+        self.window_telescope.refresh()
+
+    def get_telescope_status(self):
+        if telescope.serialport is not None:
+            telescope.serialport.read(1024) # empty buffer
+            for (index,element) in enumerate(self.telescope_states):
+                telescope.serialport.write(element[1]) 
+                element[2] = telescope.serialport.read(1024).strip() 
+        else:
+            for (index,element) in enumerate(self.telescope_states):
+                element[2] = "N/A"
+            
+
+
+
+telescope = None    # Singleton
+class Telescope():
+    def __init__(self, stdscreen):
+        global telescope
+        telescope = self
+        self.last_telescope_update = 0
+        self.conn = None
+        self.socket = None
+        self.serialport = None
+        self.logfilename = "observations.log"
+        self.stellarium_mode = 0  # align
+        self.screen = stdscreen                                              
+        curses.curs_set(0)
+        self.screen.addstr(1, 2, "UTSC | PTCS", curses.A_BOLD)
+        self.screen.addstr(2, 2, "University of Toronto Scarborough | Python Telescope Control System", curses.A_BOLD)
+        #self.screen.border()
+        self.screen.refresh()
+        self.screen.immedok(True)
+        main_menu_items = [                                                  
+                ('beep', curses.beep),                                       
+                ('flash', curses.flash),                                     
+                ]                                                            
+        self.menu = Menu()                       
+        self.status = Status()                       
+        self.menu.display()
+        
+    def toggle_stellarium_mode(self):
+        self.stellarium_mode = not self.stellarium_mode
+
+    def start_server(self):
+        if self.socket == None:
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            port = 10001
+            try:
+                self.socket.bind(("", port))
+                self.socket.listen(1)
+                self.socket.setblocking(0)
+                self.push_message("Server waiting for connection on port %d."%port)
+            except socket.error as e:
+                self.push_message("Socket error (%s)"%e.strerror)
+                self.socket = None
+        else:
+            self.push_message("Server already running.")
+
+    def send_coordinates_to_stellarium(self): 
+        try:
+            for (desc, command, value) in self.status.telescope_states:
+                if command == '!CGra;':
+                    ra = ra_str2raw(value)
+                if command == '!CGde;':
+                    dec = dec_str2raw(value)
+            data = struct.pack('<hhQIii',24,0,int(round(time.time() * 1000)), ra, dec, 0)
+            telescope.conn.send(data)
+        except:
+            pass
     
-    # Change output filename
-    if key == ord('f'):
-        if port is not None:
-            filename = get_param("Output Filename")
+    def push_message(self, message):
+        self.status.push_message(message)
 
-    # Print alignment RA, DEC, Target RA, DEC and Current RA, DEC to filename
-    if key == ord('p'):
-        if port is not None:
-            print_obs(filename, alignRA, alignDEC)
-            print "Printed"
+    def get_param(self, prompt):
+        win = curses.newwin(5, 62, 5, 5)
+        curses.echo()
+        curses.curs_set(2)
+        win.border(0)
+        win.addstr(1,2,prompt)
+        r = win.getstr(3,2,55)
+        curses.noecho()
+        curses.curs_set(0)
+        self.screen.refresh()
+        return r
 
-    if key == ord('c'):
-        if port is not None:
-            command = get_param("Command: (ommit ! and ;)")
-            custom_command(command)
+    def open_port(self):
+        if os.uname()[0]=="Darwin":
+            default_port_name = '/dev/tty.usbserial'
+        else:
+            default_port_name = '/dev/ttyUSB0'
+        port_name = self.get_param("Serial port to open [leave blank for '"+default_port_name+"']")
+        try:
+            if port_name == '':
+                port_name = default_port_name
+            self.serialport = serial.Serial(port_name, 19200, timeout = 0.1) 
+            self.push_message("Successfully opened serial port.")
+        except:
+            self.push_message("Opening serial port failed.")
+            self.serialport = None
+    
+    def send(self,data):
+        if len(data)<1:
+            return False
+        elif self.serialport is not None:
+            self.serialport.write(data)
+            self.push_message("Sent '%s' to telescope."%data)
+            return True
+        else:
+            self.push_message("Did NOT send data to telescope (port not open).")
+            return False
+    
+    def set_alignment_side(self):
+        direction = self.get_param("Set alignment side [West/East]")
+        if direction == "West" or direction == "East": 
+            self.send('!ASas' + direction + ';')
+        else:
+            self.push_message("Not a valid alignment side.")
 
-    # Update information
-    if key == ord('u'):
-        current_info = get_status()
+    def set_target_rightascension(self):
+        ra = self.get_param("Set target Right Ascension [hh:mm:dd]")
+        if len(ra)>0:
+            self.send('!CStr' + ra + ';')
+        else:
+            self.push_message("Did not receive user input.")
 
-curses.endwin()
+    def set_target_declination(self):
+        dec = self.get_param("Set target Declination [+dd:mm:ss]")
+        if len(dec)>0:
+            self.send('!CStd' + dec + ';')
+        else:
+            self.push_message("Did not receive user input.")
+
+    def align_from_target(self):
+        self.send('!AFrn;')
+
+    def go_to_target(self):
+        self.send('!GTrd;')
+    
+    def void_alignment(self):
+        self.send('!AVoi;')
+
+    def previous_alignment(self):
+        self.send('!GTol;')
+    
+    def send_custom_command(self):
+        command = self.get_param("Command (ommit ! and ;):")
+        if len(command)>0:
+            command = "!" + command + ";"
+            self.send(command)
+        else:
+            self.push_message("Did not receive user input.")
+
+    def write_telescope_readout(self):
+        with open(self.logfilename, 'a') as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S\t", time.gmtime()))                  
+            for (desc, command, value) in self.status.telescope_states:
+                f.write(value+"\t")
+            f.write(value+"\n")
+            self.push_message("Telescope readout saved.")
+            f.close()
+    def exit(self):
+        if self.socket is not None:
+            if self.conn is not None:
+                self.conn.close()
+                try:
+                    sddocket.shutdown(socket.SHUT_RD)
+                except:
+                    pass
+            self.socket.close()
+        if self.serialport is not None:
+            if self.serialport.isOpen():
+                self.serialport.close()
+        exit()
+
+        
+if __name__ == '__main__':                                                       
+    curses.wrapper(Telescope)
+
