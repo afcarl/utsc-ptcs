@@ -12,27 +12,27 @@ import time
 class Menu(object):                                                          
     def __init__(self, telescope):
         self.telescope = telescope
-        self.window = curses.newwin(17,65,2,2)                                  
-        self.window.keypad(1)                                                
-        self.window.timeout(100)
-        
         self.position = 0                                                    
         self.menuitems = [
-            ('o','Open port',                   telescope.open_port), 
-            ('e','Set alignment side',          telescope.set_alignment_side), 
-            ('r','Target right ascension',      telescope.set_target_rightascension), 
-            ('d','Target declination',          telescope.set_target_declination), 
+            ('o','Open port',                       telescope.open_port), 
+            ('e','Set alignment side',              telescope.set_alignment_side), 
+            ('r','Target right ascension',          telescope.set_target_rightascension), 
+            ('d','Target declination',              telescope.set_target_declination), 
             ('a','Align from target/next stellarium slew', telescope.align_from_target), 
-            ('g','Go to target',                telescope.go_to_target), 
-            ('u','Update current info',         None),
-            ('v','Void alignment',              None),
-            ('b','Return to previous target',   None),
-            ('s','Open/close server commands',  None),
-            ('f','Change output filename',      None),
-            ('p','Print observation data',      None),
-            ('c','Custom commands',             None),
-            ('q','Exit',                        exit)
+            ('g','Go to target',                    telescope.go_to_target), 
+            ('u','Update current info',             None),
+            ('v','Void alignment',                  telescope.void_alignment),
+            ('b','Return to previous target',       telescope.previous_alignment),
+            ('s','Open/close server commands',      None),
+            ('p','Write observation data to file',  telescope.write_observation_data),
+            ('c','Custom commands',                 telescope.send_custom_command),
+            ('q','Exit',                            exit)
             ]
+        
+        self.window = curses.newwin(len(self.menuitems)+2,65,4,2)                                  
+        self.window.keypad(1)                                                
+        self.window.timeout(100)    # in ms
+        
     
     def navigate(self, n):                                                   
         self.position += n                                                   
@@ -63,8 +63,9 @@ class Menu(object):
             elif key == curses.KEY_DOWN:                                     
                 self.navigate(1)                                             
             else:
-                for m in self.menuitems:
+                for (index,m) in enumerate(self.menuitems):
                     if ord(m[0])==key:
+                        self.position=index
                         m[2]()
 
 
@@ -99,8 +100,12 @@ class Status(object):
 class Telescope():
     def __init__(self, stdscreen):
         self.port = None
+        self.logfilename = "observations.log"
         self.screen = stdscreen                                              
-        stdscreen.border()
+        self.screen.addstr(1, 2, "UTSC | PTCS")
+        self.screen.addstr(2, 2, "University of Toronto Scarborough | Python Telescope Control System")
+        #self.screen.border()
+        self.screen.refresh()
         self.screen.immedok(True)
         main_menu_items = [                                                  
                 ('beep', curses.beep),                                       
@@ -121,7 +126,7 @@ class Telescope():
         win.addstr(1,2,prompt)
         r = win.getstr(3,2,55)
         curses.noecho()
-        self.screen.clear()
+        self.screen.refresh()
         return r
 
     def open_port(self):
@@ -160,14 +165,14 @@ class Telescope():
 
     def set_target_rightascension(self):
         ra = self.get_param("Set target Right Ascension [hh:mm:dd]")
-        if len(ra)>1:
+        if len(ra)>0:
             self.send('!CStr' + ra + ';')
         else:
             self.set_status("Did not receive user input.")
 
     def set_target_declination(self):
         dec = self.get_param("Set target Declination [+dd:mm:ss]")
-        if len(dec)>1:
+        if len(dec)>0:
             self.send('!CStd' + dec + ';')
         else:
             self.set_status("Did not receive user input.")
@@ -177,7 +182,36 @@ class Telescope():
 
     def go_to_target(self):
         self.send('!GTrd;')
+    
+    def void_alignment(self):
+        self.send('!AVoi;')
 
+    def previous_alignment(self):
+        self.send('!GTol;')
+    
+    def send_custom_command(self):
+        command = self.get_param("Command (ommit ! and ;):")
+        if len(command)>0:
+            command = "!" + command + ";"
+            self.send(command)
+        else:
+            self.set_status("Did not receive user input.")
+
+    def write_observation_data(self):
+        with open(self.logfilename, 'a') as f:
+            self.port.readline()
+            self.port.write('!CGra;') # GetRA
+            curra = port.readline().split(';')[0]
+            self.port.write('!CGde;') # GetDec
+            curdec = port.readline().split(';')[0]
+            self.port.write('!CGtr;') # GetTargetRA
+            tarra = port.readline().split(';')[0]
+            self.port.write('!CGtd;') # GetTargetDec
+            tardec = port.readline().split(';')[0]
+            printstr = alignra + " " + aligndec+ " " + tarra+ " " + tardec+ " " + curra+ " " + curdec +"\n"
+            f.write(printstr)
+            self.set_status("Observation data saved.")
+        
 if __name__ == '__main__':                                                       
     curses.wrapper(Telescope)
 print "done"
@@ -226,23 +260,6 @@ def get_status():
           nc = "Not connected."
           return [nc,nc,nc,nc,nc,nc]
 
-def print_obs(name, alignra, aligndec):
-    if alignra is not None and aligndec is not None:
-        with open(name, 'a') as f:
-            port.readline()
-            port.write('!CGra;') # GetRA
-            curra = port.readline().split(';')[0]
-            port.write('!CGde;') # GetDec
-            curdec = port.readline().split(';')[0]
-            port.write('!CGtr;') # GetTargetRA
-            tarra = port.readline().split(';')[0]
-            port.write('!CGtd;') # GetTargetDec
-            tardec = port.readline().split(';')[0]
-            printstr = alignra + " " + aligndec+ " " + tarra+ " " + tardec+ " " + curra+ " " + curdec +"\n"
-            f.write(printstr)
-    else:
-        print "No alignment saved"
-        
 
 def manage_string(string):
     new_string = ''
@@ -282,10 +299,6 @@ def unpack_command(command):
     ra_string = str(int(ra)) + ":" + str(int(ra%1*60)) + ":" + str(round(ra%1*60%1*60, 1)) # convert from decimal into hms
     return (ra_string,dec_string)
 
-def custom_command(command):
-    command = "!" + command + ";"
-    port.write(command)
-    print port.readline()
 
 
 current_info_titles = ['Alignment State:', 'Side of the Sky:',
@@ -299,17 +312,11 @@ server_running = False
 stell_align = False
 RA = None
 DEC = None
-filename = "observations.txt"
-screen = curses.initscr()
-screen.timeout(50) #stops getch() from blocking
 start_time = time.time()
 
 good = True
 while good: 
 
-    screen.clear()
-    screen.border(0)
-    screen.addstr(2, 2, "UTSC Python Telescope control system")
     for i in range(len(help_list)):
         screen.addstr(i + 3, 4, help_list[i])
     for i in range(len(current_info_titles)):
@@ -371,15 +378,6 @@ while good:
 
 
     
-    # Void alignment
-    if key == ord('v'):
-        if port is not None:
-             port.write('!AVoi;')
-
-    # previous alignment
-    if key == ord('b'):
-        if port is not None:
-             port.write('!GTol;')
     
     # Open Server
     if key == ord('s'):
@@ -392,22 +390,6 @@ while good:
             server_running = True
             print "Server open"
     
-    # Change output filename
-    if key == ord('f'):
-        if port is not None:
-            filename = get_param("Output Filename")
-
-    # Print alignment RA, DEC, Target RA, DEC and Current RA, DEC to filename
-    if key == ord('p'):
-        if port is not None:
-            print_obs(filename, alignRA, alignDEC)
-            print "Printed"
-
-    if key == ord('c'):
-        if port is not None:
-            command = get_param("Command: (ommit ! and ;)")
-            custom_command(command)
-
     # Update information
     if key == ord('u'):
         current_info = get_status()
