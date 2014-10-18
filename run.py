@@ -21,7 +21,7 @@ class Menu():
             ('g','Go to target',                    telescope.go_to_target), 
             ('v','Void alignment',                  telescope.void_alignment),
             ('b','Return to previous target',       telescope.previous_alignment),
-            ('s','Open/close server commands',      telescope.toggle_server),
+            ('s','Open Stellarium server',          telescope.start_server),
             ('p','Write observation data to file',  telescope.write_observation_data),
             ('c','Custom commands',                 telescope.send_custom_command),
             ('q','Exit',                            exit)
@@ -77,25 +77,28 @@ class Menu():
                 else:
                     try:
                         data = telescope.conn.recv(1024)
-                        telescope.set_status("Data received")
-                        """ Unpack the data recieved from stellarium, and converts into coordinates in RA and DEC"""
-                        print command
-                        data = struct.unpack('<hhQIi',command)
-                        RA_raw = data[-2]  # a value of 0x100000000 = 0x0 means 24h=0h,
-                                           # a value of 0x80000000 means 12h
-                                           # 12h = 2147483648 
-                        DEC_raw = data[-1] # a value of -0x40000000 means -90 degrees
-                                           # a value of 0x0 means 0 degrees
-                                           #  a value of 0x40000000 means 90 degrees
-                                           # 90d = 1073741824
-                        dec = float(DEC_raw)/1073741824.0*90.0
-                        if dec > 0:
-                            dec_string = "+" + str(int(dec)) + ":" + str(int(dec%1*60)) + ":" + str(round(dec%1*60%1*60, 1)) # convert from decimal into dms
+                        if len(data)==20:   # goto command
+                            #telescope.conn.send(data) # echo
+                            data = struct.unpack('<hhQIi',data)
+                            RA_raw = data[-2]  # a value of 0x100000000 = 0x0 means 24h=0h,
+                                               # a value of 0x80000000 means 12h
+                                               # 12h = 2147483648 
+                            DEC_raw = data[-1] # a value of -0x40000000 means -90 degrees
+                                               # a value of 0x0 means 0 degrees
+                                               #  a value of 0x40000000 means 90 degrees
+                                               # 90d = 1073741824
+                            dec = float(DEC_raw)/1073741824.0*90.0
+                            if dec > 0:
+                                dec_string = "+" + str(int(dec)) + ":" + str(int(dec%1*60)) + ":" + str(round(dec%1*60%1*60, 1)) # convert from decimal into dms
+                            else:
+                                dec_string = str(int(dec)) + ":" + str(int(dec%1*60)) + ":" + str(round(dec%1*60%1*60, 1)) # convert from decimal into dms
+                            ra = float(RA_raw)/2147483648.0 *12.0
+                            ra_string = str(int(ra)) + ":" + str(int(ra%1*60)) + ":" + str(round(ra%1*60%1*60, 1)) # convert from decimal into hms
+                            telescope.set_status("Goto command received (%s %s)" % (ra_string,dec_string))
+                        elif len(data)==0:
+                            continue
                         else:
-                            dec_string = str(int(dec)) + ":" + str(int(dec%1*60)) + ":" + str(round(dec%1*60%1*60, 1)) # convert from decimal into dms
-                        ra = float(RA_raw)/2147483648.0 *12.0
-                        ra_string = str(int(ra)) + ":" + str(int(ra%1*60)) + ":" + str(round(ra%1*60%1*60, 1)) # convert from decimal into hms
-                        return (ra_string,dec_string)
+                            telescope.set_status("Unknown command received of length %d."%len(data))
 
 
 
@@ -107,10 +110,9 @@ class Menu():
 
 class Status():                                                          
     def __init__(self):
-        self.window = curses.newwin(8,67,18,2)                                  
-        self.message = "PTCS initialized."
+        self.window_status = curses.newwin(5,67,18,2)                                  
+        
         self.last_telescope_update = 0
-       
         self.telescope_state= [
             ['Alignment state',              '!AGas;', ""],  
             ['Side of the sky',              '!AGai;', ""],
@@ -119,35 +121,50 @@ class Status():
             ['Target right ascension',       '!CGtr;', ""],
             ['Target declination',           '!CGtd;', ""]
         ]
-        self.window_telescope = curses.newwin(3+len(self.telescope_state),67,26,2)                                  
-
+        self.window_telescope = curses.newwin(3+len(self.telescope_state),67,23,2)                                  
         
-    def display(*args):                                                       
-        self = args[0]
-        if len(args)>1:
-            self.message = args[1]
-        self.window.clear()
-        self.window.border(0)
+        self.maxmessages = 5;
+        self.messages = []
+        self.push_message("PTCS initialized.")
+        self.window_messages = curses.newwin(4+self.maxmessages,67,32,2)                                  
+
+    def push_message(self,message):
+        if len(message)>0:
+            timestamp = time.strftime("%H:%M:%S", time.gmtime())                    
+            self.messages.insert(0,"%s %s" %(timestamp,message))
+            if len(self.messages)>self.maxmessages:
+                self.messages.pop()
+        
+    def display(self):                                                       
+        self.window_status.clear()
+        self.window_status.border(0)
         # Time
-        self.window.addstr(1, 2, "UTC Time")                    
-        self.window.addstr(1, 15, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()))                    
+        self.window_status.addstr(1, 2, "Time (UTC)")                    
+        self.window_status.addstr(1, 15, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()))                    
         # Port
-        self.window.addstr(2, 2, "Port")                    
+        self.window_status.addstr(2, 2, "Serial port")                    
         portname = "Not open"
         if telescope.serialport:
             portname = telescope.serialport.name
-        self.window.addstr(2, 15, portname )                    
+        self.window_status.addstr(2, 15, portname )                    
         # Server
-        self.window.addstr(3, 2, "Server")                    
+        self.window_status.addstr(3, 2, "Server")                    
         serverstatus = "Not running"
         if telescope.socket is not None:
-            serverstatus = "Running " 
-        self.window.addstr(3, 15, serverstatus )                    
-        # Status Text
-        self.window.addstr(4, 2, "---------------------------------------------------")                    
-        self.window.addstr(5, 2, "Status")                    
-        self.window.addstr(5, 15, self.message)                    
-        self.window.refresh()
+            if telescope.conn is not None:
+                serverstatus = "Connected" 
+            else:
+                serverstatus = "Waiting for connection" 
+        self.window_status.addstr(3, 15, serverstatus )                    
+        self.window_status.refresh()
+        
+        # Status Messages
+        self.window_messages.clear()
+        self.window_messages.border(0)
+        self.window_messages.addstr(1, 2, "Status messages", curses.A_BOLD)                    
+        for (index,message) in enumerate(self.messages):
+            self.window_messages.addstr(2+index, 4, message)                    
+        self.window_messages.refresh()
         
         
         self.window_telescope.clear()
@@ -158,10 +175,10 @@ class Status():
                 self.last_telescope_update = time.time()
                 # TODO UPDATE Telescope state
 
-        self.window_telescope.addstr(1, 2, "Telescope readout:")                    
+        self.window_telescope.addstr(1, 2, "Telescope readout", curses.A_BOLD)                    
         for (index,element) in enumerate(self.telescope_state):
-            self.window_telescope.addstr(index+2, 2, element[0])                    
-            self.window_telescope.addstr(index+2, 30, element[2])                    
+            self.window_telescope.addstr(index+2, 4, element[0])                    
+            self.window_telescope.addstr(index+2, 32, element[2])                    
 
         self.window_telescope.refresh()
 
@@ -206,20 +223,23 @@ class Telescope():
         self.menu.display()
         
     
-    def toggle_server(self):
-        if self.conn == None:
+    def start_server(self):
+        if self.socket == None:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.bind(("127.0.0.1", 10001))
-            self.socket.listen(1)
-            self.socket.setblocking(0)
-            self.set_status("Server waiting for connection.")
+            port = 10001
+            try:
+                self.socket.bind(("", port))
+                self.socket.listen(1)
+                self.socket.setblocking(0)
+                self.set_status("Server waiting for connection on port %d."%port)
+            except socket.error as e:
+                self.set_status("Socket error (%s)"%e.strerror)
         else:
-            self.server = None
-            self.set_status("Server shut down.")
+            self.set_status("Server already running.")
         
     
     def set_status(self, message):
-        self.status.display(message)
+        self.status.push_message(message)
 
     def get_param(self, prompt):
         win = curses.newwin(5, 62, 5, 5)
@@ -322,7 +342,6 @@ exit()
 current_info = [';']
 
 
-def unpack_command(command):
 
 
 ##########################
