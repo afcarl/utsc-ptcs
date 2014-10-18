@@ -23,7 +23,7 @@ class Menu():
             ('b','Return to previous target',       telescope.previous_alignment),
             ('s','Open Stellarium server',          telescope.start_server),
             ('t','Toggle Stellarium mode',          telescope.toggle_stellarium_mode),
-            ('p','Write observation data to file',  telescope.write_observation_data),
+            ('p','Write observation data to file',  telescope.write_telescope_readout),
             ('c','Custom commands',                 telescope.send_custom_command),
             ('q','Exit',                            exit)
             ]
@@ -79,7 +79,6 @@ class Menu():
                     try:
                         data = telescope.conn.recv(1024)
                         if len(data)==20:   # goto command
-                            #telescope.conn.send(data) # echo
                             data = struct.unpack('<hhQIi',data)
                             RA_raw = data[-2]  # a value of 0x100000000 = 0x0 means 24h=0h,
                                                # a value of 0x80000000 means 12h
@@ -118,7 +117,7 @@ class Status():
         self.window_status = curses.newwin(6,67,ypos,2)                                  
         
         self.last_telescope_update = 0
-        self.telescope_state= [
+        self.telescope_states= [
             ['Alignment state',              '!AGas;', ""],  
             ['Side of the sky',              '!AGai;', ""],
             ['Current right ascension',      '!CGra;', ""],
@@ -127,7 +126,7 @@ class Status():
             ['Target declination',           '!CGtd;', ""]
         ]
         ypos += self.window_status.getmaxyx()[0]
-        self.window_telescope = curses.newwin(3+len(self.telescope_state),67,ypos,2)                                  
+        self.window_telescope = curses.newwin(3+len(self.telescope_states),67,ypos,2)                                  
         
         self.maxmessages = 5;
         self.messages = []
@@ -187,27 +186,25 @@ class Status():
         if telescope.serialport is not None or True:
             if time.time() - self.last_telescope_update > 2.: # only update the infos every 2 seconds
                 self.last_telescope_update = time.time()
-                # TODO UPDATE Telescope state
+                self.get_telescope_status()
 
         self.window_telescope.addstr(1, 2, "Telescope readout", curses.A_BOLD)                    
-        for (index,element) in enumerate(self.telescope_state):
+        for (index,element) in enumerate(self.telescope_states):
             self.window_telescope.addstr(index+2, 4, element[0])                    
             self.window_telescope.addstr(index+2, 32, element[2])                    
 
         self.window_telescope.refresh()
 
     def get_telescope_status(self):
-
-        telescope.serialport.readline()
-        telescope.serialport.write('!AGas;') # GetAlignmentState
-        telescope.serialport.write('!AGai;') # GetAlginmentSide
-        telescope.serialport.write('!CGra;') # GetRA
-        telescope.serialport.write('!CGde;') # GetDec
-        telescope.serialport.write('!CGtr;') # GetTargetRA
-        telescope.serialport.write('!CGtd;') # GetTargetDec
-        f = telescope.serialport.readline()
-        
-        return [a, b, c, d, e, f]
+        if telescope.serialport is not None:
+            telescope.serialport.read(1024) # empty buffer
+            for (index,element) in enumerate(self.telescope_states):
+                telescope.serialport.write(element[1]) 
+                element[2] = telescope.serialport.read(1024).strip() 
+        else:
+            for (index,element) in enumerate(self.telescope_states):
+                element[2] = "N/A"
+            
 
 
 
@@ -337,56 +334,15 @@ class Telescope():
         else:
             self.set_status("Did not receive user input.")
 
-    def write_observation_data(self):
+    def write_telescope_readout(self):
         with open(self.logfilename, 'a') as f:
-            self.serialport.readline()
-            self.serialport.write('!CGra;') # GetRA
-            curra = serialport.readline().split(';')[0]
-            self.serialport.write('!CGde;') # GetDec
-            curdec = serialport.readline().split(';')[0]
-            self.serialport.write('!CGtr;') # GetTargetRA
-            tarra = serialport.readline().split(';')[0]
-            self.serialport.write('!CGtd;') # GetTargetDec
-            tardec = serialport.readline().split(';')[0]
-            printstr = alignra + " " + aligndec+ " " + tarra+ " " + tardec+ " " + curra+ " " + curdec +"\n"
-            f.write(printstr)
-            self.set_status("Observation data saved.")
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S\t", time.gmtime()))                  
+            for (desc, command, value) in self.status.telescope_states:
+                f.write(value+"\t")
+            f.write(value+"\n")
+            self.set_status("Telescope readout saved.")
+            f.close()
         
 if __name__ == '__main__':                                                       
     curses.wrapper(Telescope)
-
-exit()
-current_info = [';']
-
-
-
-
-##########################
-# Server stuff
-if data is not None:
-    RA, DEC = unpack_command(data) 
-    data = None
-    #conn.send(data)  TODO: return to stellarium the current RA and DEC from the telescope
-    if stell_align and DEC is not None and RA is not None:
-        stell_align = False
-        print "Aligning"
-        serialport.write('!CStd' + DEC + ';')
-        alignDEC = DEC
-        print serialport.readline()
-        serialport.write('!CStr' + RA + ';')
-        alignRA = RA
-        print serialport.readline()
-        serialport.write('!AFrn;')
-        print serialport.readline()
-        print "Alignment complete"
-    elif DEC is not None and RA is not None:
-        print "Go to object"
-        serialport.write('!CStd' + DEC + ';')
-        print serialport.readline()
-        serialport.write('!CStr' + RA + ';')
-        print serialport.readline()
-        serialport.write('!GTrd;')
-        print serialport.readline()
-        print "goto complete"
-
 
