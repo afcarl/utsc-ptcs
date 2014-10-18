@@ -37,14 +37,14 @@ class Menu():
             ('e','Set alignment side',              telescope.set_alignment_side), 
             ('r','Target right ascension',          telescope.set_target_rightascension), 
             ('d','Target declination',              telescope.set_target_declination), 
-            ('a','Align from target/next stellarium slew', telescope.align_from_target), 
+            ('a','Align from target',               telescope.align_from_target), 
             ('g','Go to target',                    telescope.go_to_target), 
             ('v','Void alignment',                  telescope.void_alignment),
             ('b','Return to previous target',       telescope.previous_alignment),
-            ('s','Open Stellarium server',          telescope.start_server),
+            ('s','Start Stellarium server',         telescope.start_server),
             ('t','Toggle Stellarium mode',          telescope.toggle_stellarium_mode),
-            ('p','Write observation data to file',  telescope.write_telescope_readout),
-            ('c','Custom commands',                 telescope.send_custom_command),
+            ('p','Write telescope readout to file', telescope.write_telescope_readout),
+            ('c','Execute custom command',          telescope.send_custom_command),
             ('q','Exit',                            telescope.exit)
             ]
         
