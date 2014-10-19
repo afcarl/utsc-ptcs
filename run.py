@@ -184,6 +184,12 @@ class Telescope():
                     for (index,element) in enumerate(self.telescope_states):
                         self.serialport.write(element[1]) 
                         element[2] = self.serialport.read(1024).strip() 
+                        if element[2][0] == chr(0x8F):
+                            element[2] = "ATCL_ACK"
+                        if element[2][0] == chr(0xA5):
+                            element[2] = "ATCL_NACK"
+                        if element[2][-1] == ";":
+                            element[2] = element[2][:-1]
                 else:
                     for (index,element) in enumerate(self.telescope_states):
                         element[2] = "N/A"
