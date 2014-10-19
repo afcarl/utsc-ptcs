@@ -1,4 +1,22 @@
 #!/usr/bin/python
+# UTSC | PTCS 
+# University of Toronto Scarborough | Python Telescope Control System
+#
+# Copyright (c) 2014 Eric Dapp, Caden Armstrong, Hanno Rein
+#
+# UTSC | PCTS is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# UTSC | PCTS is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with UTSC | PCTS.  If not, see <http://www.gnu.org/licenses/>.
+#
 import serial
 import os
 import time
@@ -183,13 +201,17 @@ class Telescope():
                     self.serialport.read(1024) # empty buffer
                     for (index,element) in enumerate(self.telescope_states):
                         self.serialport.write(element[1]) 
+                        time.sleep(0.05)
                         element[2] = self.serialport.read(1024).strip() 
-                        if element[2][0] == chr(0x8F):
-                            element[2] = "ATCL_ACK"
-                        if element[2][0] == chr(0xA5):
-                            element[2] = "ATCL_NACK"
-                        if element[2][-1] == ";":
-                            element[2] = element[2][:-1]
+                        if len(element[2])>0:
+                            if element[2][0] == chr(0x8F):
+                                element[2] = "ATCL_ACK"
+                            if element[2][0] == chr(0xA5):
+                                element[2] = "ATCL_NACK"
+                            if element[2][-1] == ";":
+                                element[2] = element[2][:-1]
+                        else:
+                            element[2] = "N/A"
                 else:
                     for (index,element) in enumerate(self.telescope_states):
                         element[2] = "N/A"
@@ -279,7 +301,7 @@ class Telescope():
         try:
             if port_name == '':
                 port_name = default_port_name
-            self.serialport = serial.Serial(port_name, 19200, timeout = 0.1) 
+            self.serialport = serial.Serial(port_name, 19200, timeout = 0.01) 
             self.push_message("Successfully opened serial port.")
         except:
             self.push_message("Opening serial port failed.")
