@@ -105,7 +105,7 @@ class Status():
         self.window_status = curses.newwin(6,67,ypos,2)                                  
         ypos += self.window_status.getmaxyx()[0]
         self.window_telescope = curses.newwin(3+len(telescope.telescope_states),67,ypos,2)                                  
-        self.maxmessages = 6;
+        self.maxmessages = 16;
         self.messages = []
         self.push_message("PTCS initialized.")
         ypos += self.window_telescope.getmaxyx()[0]
@@ -202,16 +202,20 @@ class Telescope():
                     for (index,element) in enumerate(self.telescope_states):
                         self.serialport.write(element[1]) 
                         time.sleep(0.05)
-                        element[2] = self.serialport.read(1024).strip() 
-                        if len(element[2])>0:
-                            if element[2][0] == chr(0x8F):
-                                element[2] = "ATCL_ACK"
-                            if element[2][0] == chr(0xA5):
-                                element[2] = "ATCL_NACK"
-                            if element[2][-1] == ";":
-                                element[2] = element[2][:-1]
+                        ret = self.serialport.read(1024).strip() 
+                        atcl_asynch = ret.split(chr(0x9F))
+                        if len(atcl_asynch)>1:
+                            ret = atcl_asynch[0]
+                        if len(ret)>0:
+                            if ret[0] == chr(0x8F):
+                                ret = "ATCL_ACK"
+                            if ret[0] == chr(0xA5):
+                                ret = "ATCL_NACK"
+                            if ret[-1] == ";":
+                                ret = ret[:-1]
                         else:
-                            element[2] = "N/A"
+                            ret = "N/A"
+                        element[2] = ret
                 else:
                     for (index,element) in enumerate(self.telescope_states):
                         element[2] = "N/A"
@@ -311,8 +315,14 @@ class Telescope():
         if len(data)<1:
             return False
         elif self.serialport is not None:
+            self.serialport.read(10240)
             self.serialport.write(data)
             self.push_message("Sent '%s' to telescope."%data)
+            time.sleep(0.5)
+            ret = self.serialport.read(1024)
+            for r in ret.split(";"): 
+                self.push_message("Received: %s."%r)
+
             return True
         else:
             self.push_message("Did NOT send data to telescope (port not open).")
