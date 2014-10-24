@@ -237,11 +237,14 @@ class Telescope():
                 if self.conn is None:
                     try:
                         self.conn, addr = self.socket.accept()
+                        self.conn.settimeout(0)
+                        #socket.setblocking(0)
                         self.push_message("Connection established from %s:%d."% addr)
                     except socket.error as e:
                         pass
                 else:
                     try:
+                        time.sleep(0.01)
                         data = self.conn.recv(1024)
                         if len(data)==20:   # goto command
                             data = struct.unpack('<hhQIi',data)
@@ -271,9 +274,9 @@ class Telescope():
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             port = 10001
             try:
-                self.socket.bind(("", port))
+                self.socket.settimeout(0)
+                self.socket.bind(("127.0.0.1", port))
                 self.socket.listen(1)
-                self.socket.setblocking(0)
                 self.push_message("Server waiting for connection on port %d."%port)
             except socket.error as e:
                 self.push_message("Socket error (%s)"%e.strerror)
