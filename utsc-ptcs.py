@@ -58,7 +58,7 @@ class Menu():
             ('d','Target declination',              telescope.set_target_declination), 
             ('a','Align from target',               telescope.align_from_target), 
             ('g','Go to target',                    telescope.go_to_target), 
-            ('v','Void alignment',                  telescope.void_alignment),
+            # ('v','Void alignment',                  telescope.void_alignment),
             ('b','Return to previous target',       telescope.previous_alignment),
             ('s','Start Stellarium server',         telescope.start_server),
             ('t','Toggle Stellarium mode',          telescope.toggle_stellarium_mode),
