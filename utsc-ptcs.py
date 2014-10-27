@@ -265,7 +265,23 @@ class Telescope():
             # Refresh display
             self.menu.display()
             self.status.display()
-        
+    
+    def push_message(self, message):
+        self.status.push_message(message)
+
+    def get_param(self, prompt):
+        win = curses.newwin(5, 62, 5, 5)
+        curses.echo()
+        curses.curs_set(2)
+        win.border(0)
+        win.addstr(1,2,prompt)
+        r = win.getstr(3,2,55)
+        curses.noecho()
+        curses.curs_set(0)
+        self.screen.refresh()
+        return r
+
+    #################### Stellarium communication functions ######################
     def toggle_stellarium_mode(self):
         self.stellarium_mode = not self.stellarium_mode
 
@@ -284,21 +300,7 @@ class Telescope():
         else:
             self.push_message("Server already running.")
     
-    def push_message(self, message):
-        self.status.push_message(message)
-
-    def get_param(self, prompt):
-        win = curses.newwin(5, 62, 5, 5)
-        curses.echo()
-        curses.curs_set(2)
-        win.border(0)
-        win.addstr(1,2,prompt)
-        r = win.getstr(3,2,55)
-        curses.noecho()
-        curses.curs_set(0)
-        self.screen.refresh()
-        return r
-
+    #################### Telescope communication functions ######################
     def open_port(self):
         if os.uname()[0]=="Darwin":
             default_port_name = '/dev/tty.usbserial'
@@ -311,8 +313,8 @@ class Telescope():
             self.serialport = serial.Serial(port_name, 19200, timeout = 0.01) 
             self.push_message("Successfully opened serial port.")
         except:
-            self.push_message("Opening serial port failed.")
             self.serialport = None
+            self.push_message("Opening serial port failed.")
     
     def send(self,data):
         if len(data)<1:
@@ -380,6 +382,86 @@ class Telescope():
             f.write(value+"\n")
             self.push_message("Telescope readout saved.")
             f.close()
+
+    #################### Robofocus communication functions ######################
+    def open_robofocus_port(self):
+        if os.uname()[0]=="Darwin":
+            default_port_name = '/dev/tty.usbserial'
+        else:
+            default_port_name = '/dev/ttyS0'
+        port_name = self.get_param("Serial port for RoboFocus to open [leave blank for '"+default_port_name+"']")
+        try:
+            if port_name == '':
+                port_name = default_port_name
+            self.robofocus_serialport = serial.Serial(port_name, 9600, timeout = 0.01) 
+            self.push_message("Successfully opened serial port for RoboFocus.")
+        except:
+            self.robofocus_serialport = None
+            self.push_message("Opening serial port for RoboFocus failed.")
+            
+    def robofocus_send(c):            
+        Z = 0
+        for i in c:
+            Z += ord(i)
+        Z = Z%256   # checksum
+        robofocus_serialport.write(c+chr(Z)) 
+
+    def robofocus_read():
+        r = robofocus_serialport.read(1024) # empty buffer
+        return self.robofocus_decode_readout(r)
+
+    def robofocus_decode_readout(r):
+        if len(r)>0:
+            if r[0]=="I" or r[0]=="O": # ignore in/out characters
+                return self.robofocus_decode_readout(r[1:])
+        ret = ""
+        if len(r)>=9:
+            Z = 0
+            for i in r[:8]:
+                Z += ord(i)
+            Z = Z%256  # checksum
+            if Z==ord(r[8]):
+                ret = r[:8]
+            else:
+                print "Checksum did not match."
+        if len(r)>9:
+            ret += self.robofocus_decode_readout(r[9:])
+        return ret
+
+    def robofocus_get_position():
+        self.robofocus_serialport.read(1024) # empty buffer
+        self.robofocus_send("FS000000")
+        time.sleep(0.15)
+        return self.robofocus_read()
+
+    def robofocus_get_version():
+        self.robofocus_serialport.read(1024) # empty buffer
+        self.robofocus_send("FV000000") 
+        time.sleep(0.15)
+        return self.robofocus_read()
+
+    def robofocus_move_in(steps):
+        self.robofocus_serialport.read(1024) # empty buffer
+        self.robofocus_send("FI%06d"%(steps))
+        print "FI%06d"%(steps)
+        time.sleep(0.15)
+        return self.robofocus_read()
+
+    def robofocus_move_out(steps):
+        self.robofocus_serialport.read(1024) # empty buffer
+        self.robofocus_send("FO%06d"%(steps))
+        time.sleep(0.15)
+        return self.robofocus_read()
+
+    def robofocus_move(steps):
+        if steps>0:
+            return self.robofocus_move_out(steps)
+        if steps<0:
+            return self.robofocus_move_in(-steps)
+        if steps<0:
+            return self.robofocus_get_position()
+        
+    #################### Cleanup functions ######################
     def exit(self):
         if self.socket is not None:
             if self.conn is not None:
@@ -392,6 +474,9 @@ class Telescope():
         if self.serialport is not None:
             if self.serialport.isOpen():
                 self.serialport.close()
+        if self.robofocus_serialport is not None:
+            if self.robofocus_serialport.isOpen():
+                self.robofocus_serialport.close()
         exit()
 
         
