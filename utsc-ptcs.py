@@ -53,17 +53,19 @@ class Menu():
         self.position = 0                                                    
         self.menuitems = [
             ('o','Open serial port',                telescope.open_port), 
+            ('O','Open serial port for RoboFocus',  telescope.open_robofocus_port), 
+            ('m','Move RoboFocus',                  telescope.robofocus_userinput),
             ('e','Set alignment side',              telescope.set_alignment_side), 
             ('r','Target right ascension',          telescope.set_target_rightascension), 
             ('d','Target declination',              telescope.set_target_declination), 
             ('a','Align from target',               telescope.align_from_target), 
             ('g','Go to target',                    telescope.go_to_target), 
-            ('v','Void alignment',                  telescope.void_alignment),
+            #('v','Void alignment',                 telescope.void_alignment),
             ('b','Return to previous target',       telescope.previous_alignment),
             ('s','Start Stellarium server',         telescope.start_server),
             ('t','Toggle Stellarium mode',          telescope.toggle_stellarium_mode),
             ('p','Write telescope readout to file', telescope.write_telescope_readout),
-            ('c','Execute custom command',          telescope.send_custom_command),
+            ('c','Execute custom telescope command',telescope.send_custom_command),
             ('q','Exit',                            telescope.exit)
             ]
         self.window = curses.newwin(len(self.menuitems)+2,67,4,2)                                  
@@ -306,15 +308,15 @@ class Telescope():
             default_port_name = '/dev/tty.usbserial'
         else:
             default_port_name = '/dev/ttyUSB0'
-        port_name = self.get_param("Serial port to open [leave blank for '"+default_port_name+"']")
+        port_name = self.get_param("Telescope serial port [leave blank for '"+default_port_name+"']")
         try:
             if port_name == '':
                 port_name = default_port_name
             self.serialport = serial.Serial(port_name, 19200, timeout = 0.01) 
-            self.push_message("Successfully opened serial port.")
+            self.push_message("Successfully opened serial port for telescope.")
         except:
             self.serialport = None
-            self.push_message("Opening serial port failed.")
+            self.push_message("Opening serial port for telescope failed.")
     
     def send(self,data):
         if len(data)<1:
@@ -389,7 +391,7 @@ class Telescope():
             default_port_name = '/dev/tty.usbserial'
         else:
             default_port_name = '/dev/ttyS0'
-        port_name = self.get_param("Serial port for RoboFocus to open [leave blank for '"+default_port_name+"']")
+        port_name = self.get_param("RoboFocus serial port [leave blank for '"+default_port_name+"']")
         try:
             if port_name == '':
                 port_name = default_port_name
@@ -399,18 +401,20 @@ class Telescope():
             self.robofocus_serialport = None
             self.push_message("Opening serial port for RoboFocus failed.")
             
-    def robofocus_send(c):            
+    def robofocus_send(self,c):            
         Z = 0
         for i in c:
             Z += ord(i)
         Z = Z%256   # checksum
-        robofocus_serialport.write(c+chr(Z)) 
+        self.push_message("Sent '%s' to RoboFocus."%c)
+        self.robofocus_serialport.write(c+chr(Z)) 
 
-    def robofocus_read():
-        r = robofocus_serialport.read(1024) # empty buffer
-        return self.robofocus_decode_readout(r)
+    def robofocus_read(self):
+        r = self.robofocus_decode_readout(self.robofocus_serialport.read(1024))
+        self.push_message("Read '%s' from RoboFocus."%r)
+        return r
 
-    def robofocus_decode_readout(r):
+    def robofocus_decode_readout(self,r):
         if len(r)>0:
             if r[0]=="I" or r[0]=="O": # ignore in/out characters
                 return self.robofocus_decode_readout(r[1:])
@@ -428,32 +432,38 @@ class Telescope():
             ret += self.robofocus_decode_readout(r[9:])
         return ret
 
-    def robofocus_get_position():
+    def robofocus_get_position(self):
         self.robofocus_serialport.read(1024) # empty buffer
         self.robofocus_send("FS000000")
         time.sleep(0.15)
         return self.robofocus_read()
 
-    def robofocus_get_version():
+    def robofocus_get_version(self):
         self.robofocus_serialport.read(1024) # empty buffer
         self.robofocus_send("FV000000") 
         time.sleep(0.15)
         return self.robofocus_read()
 
-    def robofocus_move_in(steps):
+    def robofocus_move_in(self,steps):
         self.robofocus_serialport.read(1024) # empty buffer
         self.robofocus_send("FI%06d"%(steps))
-        print "FI%06d"%(steps)
-        time.sleep(0.15)
-        return self.robofocus_read()
+        return 
 
-    def robofocus_move_out(steps):
+    def robofocus_move_out(self,steps):
         self.robofocus_serialport.read(1024) # empty buffer
         self.robofocus_send("FO%06d"%(steps))
-        time.sleep(0.15)
-        return self.robofocus_read()
+        return 
 
-    def robofocus_move(steps):
+    def robofocus_userinput(self):
+        steps = self.get_param("Move RoboFocus [+=out,-=in]")
+        try: 
+            steps = int(steps)
+        except:
+            self.push_message("Not a valid input.")
+            return
+        self.robofocus_move(steps)
+
+    def robofocus_move(self,steps):
         if steps>0:
             return self.robofocus_move_out(steps)
         if steps<0:
