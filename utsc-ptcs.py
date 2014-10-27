@@ -52,7 +52,7 @@ class Menu():
     def __init__(self):
         self.position = 0                                                    
         self.menuitems = [
-            ('o','Open serial port',                telescope.open_port), 
+            ('o','Open serial port for telescope',  telescope.open_port), 
             ('O','Open serial port for RoboFocus',  telescope.open_robofocus_port), 
             ('m','Move RoboFocus',                  telescope.robofocus_userinput),
             ('e','Set alignment side',              telescope.set_alignment_side), 
@@ -104,7 +104,7 @@ class Menu():
 class Status():                                                          
     def __init__(self):
         ypos = 4+telescope.menu.window.getmaxyx()[0]
-        self.window_status = curses.newwin(6,67,ypos,2)                                  
+        self.window_status = curses.newwin(7,67,ypos,2)                                  
         ypos += self.window_status.getmaxyx()[0]
         self.window_telescope = curses.newwin(3+len(telescope.telescope_states),67,ypos,2)                                  
         self.maxmessages = 16;
@@ -126,27 +126,33 @@ class Status():
         # Time
         self.window_status.addstr(1, 2, "Time (UTC)")                    
         self.window_status.addstr(1, 19, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()))                    
-        # Port
-        self.window_status.addstr(2, 2, "Serial port")                    
+        # Port Telescope
+        self.window_status.addstr(2, 2, "Telescope port")                    
         portname = "Not open"
         if telescope.serialport:
             portname = telescope.serialport.name
         self.window_status.addstr(2, 19, portname )                    
+        # Port Robofocus
+        self.window_status.addstr(3, 2, "RoboFocus port")                    
+        portname = "Not open"
+        if telescope.robofocus_serialport:
+            portname = telescope.robofocus_serialport.name
+        self.window_status.addstr(3, 19, portname )                    
         # Server
-        self.window_status.addstr(3, 2, "Server")                    
+        self.window_status.addstr(4, 2, "Server")                    
         serverstatus = "Not running"
         if telescope.socket is not None:
             if telescope.conn is not None:
                 serverstatus = "Connected" 
             else:
                 serverstatus = "Waiting for connection" 
-        self.window_status.addstr(3, 19, serverstatus )                    
-        self.window_status.addstr(4, 2, "Stellarium mode")                    
+        self.window_status.addstr(4, 19, serverstatus )                    
+        self.window_status.addstr(5, 2, "Stellarium mode")                    
         if telescope.stellarium_mode==0:
             stellarium_mode = "Align to next coordinates"
         else:
             stellarium_mode = "Go to next coordinates"
-        self.window_status.addstr(4, 19, stellarium_mode )                    
+        self.window_status.addstr(5, 19, stellarium_mode )                    
         self.window_status.refresh()
         
         # Status Messages
@@ -162,8 +168,12 @@ class Status():
         self.window_telescope.border(0)
         self.window_telescope.addstr(1, 2, "Telescope readout", curses.A_BOLD)                    
         for (index,element) in enumerate(telescope.telescope_states):
-            self.window_telescope.addstr(index+2, 4, element[0])                    
-            self.window_telescope.addstr(index+2, 32, element[2])                    
+            self.window_telescope.addstr(index+2, 2, element[0])                    
+            self.window_telescope.addstr(index+2, 28, element[2])                    
+        self.window_telescope.addstr(1, 48, "RoboFocus readout", curses.A_BOLD)                    
+        for (index,element) in enumerate(telescope.robofocus_states):
+            self.window_telescope.addstr(index+2, 2+46, element[0])                    
+            self.window_telescope.addstr(index+2, 2+46+10, element[2])                    
         self.window_telescope.refresh()
 
 
@@ -173,9 +183,11 @@ class Telescope():
         global telescope
         telescope = self
         self.last_telescope_update = 0
+        self.last_robofocus_update = 0
         self.conn = None
         self.socket = None
         self.serialport = None
+        self.robofocus_serialport = None
         self.logfilename = "observations.log"
         self.stellarium_mode = 0  # align
         self.screen = stdscreen                                              
@@ -189,6 +201,10 @@ class Telescope():
             ['Current declination',          '!CGde;', ""],
             ['Target right ascension',       '!CGtr;', ""],
             ['Target declination',           '!CGtd;', ""]
+        ]
+        self.robofocus_states= [
+            ['Version',         'FV', ""],  
+            ['Position',        'FD', ""]
         ]
         self.screen.refresh()
         self.screen.immedok(True)
@@ -234,6 +250,14 @@ class Telescope():
                             telescope.conn.send(data)
                         except:
                             pass
+            # Get RoboFocus heartbeat
+            if time.time() - self.last_robofocus_update > 1.: # only update the infos every second
+                self.last_robofocus_update = time.time()
+                if self.robofocus_serialport is not None:
+                    self.robofocus_parse()
+                else:
+                    for (index,element) in enumerate(self.robofocus_states):
+                        element[2] = "N/A"
             # Poll socket for Stellarium
             if self.socket is not None:
                 if self.conn is None:
@@ -397,6 +421,7 @@ class Telescope():
                 port_name = default_port_name
             self.robofocus_serialport = serial.Serial(port_name, 9600, timeout = 0.01) 
             self.push_message("Successfully opened serial port for RoboFocus.")
+            self.robofocus_get_version()
         except:
             self.robofocus_serialport = None
             self.push_message("Opening serial port for RoboFocus failed.")
@@ -414,6 +439,9 @@ class Telescope():
         self.push_message("Read '%s' from RoboFocus."%r)
         return r
 
+    def robofocus_parse(self):
+        self.robofocus_decode_readout(self.robofocus_serialport.read(1024))
+        
     def robofocus_decode_readout(self,r):
         if len(r)>0:
             if r[0]=="I" or r[0]=="O": # ignore in/out characters
@@ -428,15 +456,16 @@ class Telescope():
                 ret = r[:8]
             else:
                 print "Checksum did not match."
+            for (index,element) in enumerate(self.robofocus_states):
+                if ret[0:2] == element[1]:
+                    value = ret[2:]
+                    while value[0]=="0":
+                        value = value[1:]
+                    element[2] = value
+
         if len(r)>9:
             ret += self.robofocus_decode_readout(r[9:])
         return ret
-
-    def robofocus_get_position(self):
-        self.robofocus_serialport.read(1024) # empty buffer
-        self.robofocus_send("FS000000")
-        time.sleep(0.15)
-        return self.robofocus_read()
 
     def robofocus_get_version(self):
         self.robofocus_serialport.read(1024) # empty buffer
@@ -459,17 +488,14 @@ class Telescope():
         try: 
             steps = int(steps)
         except:
-            self.push_message("Not a valid input.")
-            return
+            steps = 0
         self.robofocus_move(steps)
 
     def robofocus_move(self,steps):
-        if steps>0:
+        if steps>=0:
             return self.robofocus_move_out(steps)
         if steps<0:
             return self.robofocus_move_in(-steps)
-        if steps<0:
-            return self.robofocus_get_position()
         
     #################### Cleanup functions ######################
     def exit(self):
