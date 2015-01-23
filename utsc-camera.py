@@ -20,8 +20,18 @@
 import Image
 import os
 
+def rename(name, num):
+    renamecmd = "mv %s %s%i.jpg"%("capt0000.jpg",name,num)
+    os.system(renamecmd)
 
-cmd = "gphoto2 --capture-image-and-download --force-overwrite"
-os.system(cmd)
-image = Image.open("capt0000.jpg")
-image.show()
+def capture_image():
+    cmd = "gphoto2 --capture-image-and-download --force-overwrite"
+    os.system(cmd)
+
+numphoto = int(raw_input("Number of shots:"))
+filename = raw_input("Filename(and path) start:")
+for a in range(0,numphoto):
+    capture_image()
+    rename(filename, a)
+#image = Image.open("capt0000.jpg")
+#image.show()
