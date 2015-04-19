@@ -28,6 +28,14 @@ def capture_image():
     cmd = "gphoto2 --capture-image-and-download --force-overwrite"
     os.system(cmd)
 
+
+def capture_bulb_image():
+    cmd = "gphoto2 --set-config shutterspeed=bulb"
+    os.system(cmd)
+    cmd = "gphoto2 --set-config bulb=1 eosremoterelease=Immediate --wait-event=120s --set-config eosremoterelease=Off --wait-event-and-download=2s"
+    os.system(cmd)
+
+
 numphoto = int(raw_input("Number of shots:"))
 filename = raw_input("Filename(and path) start:")
 for a in range(0,numphoto):
