@@ -18,6 +18,7 @@
 # along with UTSC | PCTS.  If not, see <http://www.gnu.org/licenses/>.
 #
 import serial
+from PIL import Image
 import os
 import time
 import curses
@@ -66,6 +67,10 @@ class Menu():
             ('t','Toggle Stellarium mode',          telescope.toggle_stellarium_mode),
             ('p','Write telescope readout to file', telescope.write_telescope_readout),
             ('c','Execute custom telescope command',telescope.send_custom_command),
+                          #('C','Take Picture Using Camera',       camera.capture_image),
+            ('I','set ISO',                         telescope.define_iso),
+            ('S','set Shutter Speed',                         telescope.shutter_speed),
+            ('C','Capture Camera Image',            telescope.capture_image),
             ('q','Exit',                            telescope.exit)
             ]
         self.window = curses.newwin(len(self.menuitems)+2,67,4,2)                                  
@@ -175,7 +180,6 @@ class Status():
             self.window_telescope.addstr(index+2, 2+46, element[0])                    
             self.window_telescope.addstr(index+2, 2+46+10, element[2])                    
         self.window_telescope.refresh()
-
 
 telescope = None    # Singleton
 class Telescope():
@@ -373,6 +377,38 @@ class Telescope():
         else:
             self.push_message("Did not receive user input.")
 
+#******NEW CAMERA DEF************************************
+    def define_iso(self):
+        iso_value = self.get_param("Set ISO value (100, 200, 400, 800, 1600, 3200, 6400):")
+        cmd = "gphoto2 --set-config capture=on --set-config iso="+str(iso_value)
+        os.system(cmd)
+
+    def shutter_speed(self):
+        exposure_value = self.get_param("Enter Exposure Time (seconds):")
+        cmd = "gphoto2 --set-config capture=on --set-config shutterspeed="+str(exposure_value)
+        os.system(cmd)
+
+#def rename(name, num):
+#renamecmd = "mv %s %s%i.jpg"%("capt0000.jpg",name,num)
+#os.system(renamecmd)
+
+    def capture_image(self):
+        numphoto = int(self.get_param("Number of Photos to Take:"))
+        filename = self.get_param("Filename:")
+        folder = 'pictures/'
+        path = ''+folder+''+filename
+        for a in range(0,numphoto):
+            cmd = "gphoto2 --capture-image-and-download --force-overwrite"
+            os.system(cmd)
+            #rename(filename, a)
+            renamecmd = "mv %s %s%i.jpg"%("capt0000.jpg",path,a)
+            os.system(renamecmd)
+            image = Image.open(path+str(a)+".jpg")
+            image.show()
+        os.system('mv *.cr2 '+folder+'.')
+
+#******NEW CAMERA DEF************************************
+
     def set_target_declination(self):
         dec = self.get_param("Set target Declination [+dd:mm:ss]")
         if len(dec)>0:
@@ -518,4 +554,3 @@ class Telescope():
         
 if __name__ == '__main__':                                                       
     curses.wrapper(Telescope)
-

@@ -17,7 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with UTSC | PCTS.  If not, see <http://www.gnu.org/licenses/>.
 #
-import Image
+from PIL import Image
 import os
 
 def rename(name, num):
@@ -56,6 +56,6 @@ for a in range(0,numphoto):
     shutter_speed(EXP_val)
     capture_image()
     rename(filename, a)
+    string = filename+str(a)+".jpg"
     image = Image.open(filename+str(a)+".jpg")
-    print image
     image.show()
