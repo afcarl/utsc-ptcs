@@ -68,8 +68,8 @@ class Menu():
             ('p','Write telescope readout to file', telescope.write_telescope_readout),
             ('c','Execute custom telescope command',telescope.send_custom_command),
                           #('C','Take Picture Using Camera',       camera.capture_image),
-            ('I','set ISO',                         telescope.define_iso),
-            ('S','set Shutter Speed',                         telescope.shutter_speed),
+            ('I','Set Camera ISO',                  telescope.define_iso),
+            ('S','Set Camera Shutter Speed',        telescope.shutter_speed),
             ('C','Capture Camera Image',            telescope.capture_image),
             ('q','Exit',                            telescope.exit)
             ]
@@ -377,7 +377,7 @@ class Telescope():
         else:
             self.push_message("Did not receive user input.")
 
-#******NEW CAMERA DEF************************************
+#******DAN, ARI, KIM, NEW CAMERA DEF************************************
     def define_iso(self):
         iso_value = self.get_param("Set ISO value (100, 200, 400, 800, 1600, 3200, 6400):")
         cmd = "gphoto2 --set-config capture=on --set-config iso="+str(iso_value)
