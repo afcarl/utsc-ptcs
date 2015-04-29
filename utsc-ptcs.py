@@ -54,17 +54,17 @@ class Menu():
         self.menuitems = [
             ('o','Open serial port for telescope',  telescope.open_port), 
             ('O','Open serial port for RoboFocus',  telescope.open_robofocus_port), 
-            ('m','Move RoboFocus',                  telescope.robofocus_userinput),
             ('e','Set alignment side',              telescope.set_alignment_side), 
-            ('r','Target right ascension',          telescope.set_target_rightascension), 
-            ('d','Target declination',              telescope.set_target_declination), 
             ('a','Align from target',               telescope.align_from_target), 
-            ('g','Go to target',                    telescope.go_to_target), 
             # ('v','Void alignment',                  telescope.void_alignment),
-            ('b','Return to previous target',       telescope.previous_alignment),
             ('s','Start Stellarium server',         telescope.start_server),
             ('t','Toggle Stellarium mode',          telescope.toggle_stellarium_mode),
-            ('p','Write telescope readout to file', telescope.write_telescope_readout),
+            # ('p','Write telescope readout to file', telescope.write_telescope_readout),
+            ('b','Return to previous target',       telescope.previous_alignment),
+            ('g','Go to target',                    telescope.go_to_target), 
+            ('m','Move RoboFocus',                  telescope.robofocus_userinput),
+            ('r','Target right ascension',          telescope.set_target_rightascension), 
+            ('d','Target declination',              telescope.set_target_declination), 
             ('c','Execute custom telescope command',telescope.send_custom_command),
             ('q','Exit',                            telescope.exit)
             ]
@@ -216,24 +216,30 @@ class Telescope():
             if time.time() - self.last_telescope_update > 2.: # only update the infos every 2 seconds
                 self.last_telescope_update = time.time()
                 if self.serialport is not None:
-                    self.serialport.read(1024) # empty buffer
-                    for (index,element) in enumerate(self.telescope_states):
-                        self.serialport.write(element[1]) 
-                        time.sleep(0.05)
-                        ret = self.serialport.read(1024).strip() 
-                        atcl_asynch = ret.split(chr(0x9F))
-                        if len(atcl_asynch)>1:
-                            ret = atcl_asynch[0]
-                        if len(ret)>0:
-                            if ret[0] == chr(0x8F):
-                                ret = "ATCL_ACK"
-                            if ret[0] == chr(0xA5):
-                                ret = "ATCL_NACK"
-                            if ret[-1] == ";":
-                                ret = ret[:-1]
-                        else:
-                            ret = "N/A"
-                        element[2] = ret
+                    try:
+                        self.serialport.read(1024) # empty buffer
+                        for (index,element) in enumerate(self.telescope_states):
+                            self.serialport.write(element[1]) 
+                            time.sleep(0.05)
+                            ret = self.serialport.read(1024).strip() 
+                            atcl_asynch = ret.split(chr(0x9F))
+                            if len(atcl_asynch)>1:
+                                ret = atcl_asynch[0]
+                            if len(ret)>0:
+                                if ret[0] == chr(0x8F):
+                                    ret = "ATCL_ACK"
+                                if ret[0] == chr(0xA5):
+                                    ret = "ATCL_NACK"
+                                if ret[-1] == ";":
+                                    ret = ret[:-1]
+                            else:
+                                ret = "N/A"
+                            element[2] = ret
+                    except:
+                        if self.serialport is not None:
+                            if self.serialport.isOpen():
+                                self.serialport.close()
+                        self.push_message("Something is wrong. Closing serial connection to telescope.")
                 else:
                     for (index,element) in enumerate(self.telescope_states):
                         element[2] = "N/A"
