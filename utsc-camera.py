@@ -28,18 +28,34 @@ def capture_image():
     cmd = "gphoto2 --capture-image-and-download --force-overwrite"
     os.system(cmd)
 
-
 def capture_bulb_image():
     cmd = "gphoto2 --set-config shutterspeed=bulb"
     os.system(cmd)
     cmd = "gphoto2 --set-config bulb=1 eosremoterelease=Immediate --wait-event=120s --set-config eosremoterelease=Off --wait-event-and-download=2s"
     os.system(cmd)
 
+def define_iso(iso_value):
+    cmd = "gphoto2 --set-config capture=on --set-config iso="+str(iso_value)
+    os.system(cmd)
+
+def manual_focus():
+    cmd = "gphoto2 --set-config manualfocusdrive=Near 1"
+
+def shutter_speed(exposure_value):
+    cmd = "gphoto2 --set-config capture=on --set-config shutterspeed="+str(exposure_value)
+    os.system(cmd)
+
 
 numphoto = int(raw_input("Number of shots:"))
 filename = raw_input("Filename(and path) start:")
+ISO_val = raw_input("Enter ISO (100, 200, 400, 800, 1600, 3200, 6400):")
+EXP_val = raw_input("Enter Exposure Time (seconds):")
 for a in range(0,numphoto):
+    # capture_bulb_image()
+    define_iso(ISO_val)
+    shutter_speed(EXP_val)
     capture_image()
     rename(filename, a)
-#image = Image.open("capt0000.jpg")
-#image.show()
+    image = Image.open(filename+str(a)+".jpg")
+    print image
+    image.show()
