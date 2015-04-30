@@ -58,7 +58,7 @@ class Menu():
             ('o','Open serial port for telescope',  telescope.open_port), 
             ('O','Open serial port for RoboFocus',  telescope.open_robofocus_port), 
             ('e','Set alignment side',              telescope.set_alignment_side), 
-            ('a','Align from target',               telescope.align_from_target), 
+            #('a','Align from target',               telescope.align_from_target), 
             # ('v','Void alignment',                  telescope.void_alignment),
             ('s','Start Stellarium server',         telescope.start_server),
             ('t','Toggle Stellarium mode',          telescope.toggle_stellarium_mode),
