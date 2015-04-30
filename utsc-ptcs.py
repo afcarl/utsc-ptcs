@@ -400,8 +400,13 @@ class Telescope():
 #os.system(renamecmd)
 
     def capture_image(self):
-        numphoto = int(self.get_param("Number of Photos to Take:"))
-        filename = self.get_param("Filename:")
+        try:
+            numphoto = int(self.get_param("Number of photos to take [default: 1]"))
+        except:
+            numphoto = 1
+        filename = self.get_param("Filename [default: test]")
+        if len(filename)<1:
+            filename = "test"
         folder = 'pictures/'
         if not os.path.exists(folder):
             self.push_message("Creating folder '"+folder+"'.")
@@ -411,14 +416,14 @@ class Telescope():
             cmd = "gphoto2 --capture-image-and-download --force-overwrite"
             os.system(cmd)
             #rename(filename, a)
-            renamecmd = "cp %s %s%i.jpg"%("capt0000.jpg",path,a)
+            renamecmd = "cp %s %s_%i.jpg"%("capt0000.jpg",path,a)
             os.system(renamecmd)
 
             root = tk.Tk()
             root.geometry('400x400')
             canvas = tk.Canvas(root,width=400,height=400)
             canvas.pack()
-            pilImage = Image.open(path+str(a)+".jpg").resize((400, 400),Image.ANTIALIAS)
+            pilImage = Image.open(path+"_"+str(a)+".jpg").resize((400, 400),Image.ANTIALIAS)
             image = ImageTk.PhotoImage(pilImage)
             imagesprite = canvas.create_image(0,0,image=image,anchor=tk.NW)
             root.after(1000, lambda: root.destroy()) # Destroy the widget after 30 seconds
