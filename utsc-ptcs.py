@@ -18,13 +18,15 @@
 # along with UTSC | PCTS.  If not, see <http://www.gnu.org/licenses/>.
 #
 import serial
-from PIL import Image
+from PIL import ImageTk, Image
 import os
 import time
 import curses
 import socket
 import struct
 import time
+import Tkinter as tk
+
 
 ## Conversion functions
 def dec_str2raw(s):
@@ -67,7 +69,6 @@ class Menu():
             ('r','Target right ascension',          telescope.set_target_rightascension), 
             ('d','Target declination',              telescope.set_target_declination), 
             ('c','Execute custom telescope command',telescope.send_custom_command),
-                          #('C','Take Picture Using Camera',       camera.capture_image),
             ('I','Set Camera ISO',                  telescope.define_iso),
             ('S','Set Camera Shutter Speed',        telescope.shutter_speed),
             ('C','Capture Camera Image',            telescope.capture_image),
@@ -402,16 +403,27 @@ class Telescope():
         numphoto = int(self.get_param("Number of Photos to Take:"))
         filename = self.get_param("Filename:")
         folder = 'pictures/'
+        if not os.path.exists(folder):
+            self.push_message("Creating folder '"+folder+"'.")
+            os.system("mkdir "+folder)
         path = ''+folder+''+filename
         for a in range(0,numphoto):
             cmd = "gphoto2 --capture-image-and-download --force-overwrite"
             os.system(cmd)
             #rename(filename, a)
-            renamecmd = "mv %s %s%i.jpg"%("capt0000.jpg",path,a)
+            renamecmd = "cp %s %s%i.jpg"%("capt0000.jpg",path,a)
             os.system(renamecmd)
-            image = Image.open(path+str(a)+".jpg")
-            image.show()
-        os.system('mv *.cr2 '+folder+'.')
+
+            root = tk.Tk()
+            root.geometry('400x400')
+            canvas = tk.Canvas(root,width=400,height=400)
+            canvas.pack()
+            pilImage = Image.open(path+str(a)+".jpg").resize((400, 400),Image.ANTIALIAS)
+            image = ImageTk.PhotoImage(pilImage)
+            imagesprite = canvas.create_image(0,0,image=image,anchor=tk.NW)
+            root.mainloop()
+
+        # os.system('mv *.cr2 '+folder+'.')
 
 #******NEW CAMERA DEF************************************
 
