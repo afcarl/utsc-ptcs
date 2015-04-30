@@ -421,6 +421,8 @@ class Telescope():
             pilImage = Image.open(path+str(a)+".jpg").resize((400, 400),Image.ANTIALIAS)
             image = ImageTk.PhotoImage(pilImage)
             imagesprite = canvas.create_image(0,0,image=image,anchor=tk.NW)
+            root.after(1000, lambda: root.destroy()) # Destroy the widget after 30 seconds
+
             root.mainloop()
 
         # os.system('mv *.cr2 '+folder+'.')
