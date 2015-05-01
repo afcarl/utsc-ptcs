@@ -71,6 +71,7 @@ class Menu():
             ('c','Execute custom telescope command',telescope.send_custom_command),
             ('I','Set Camera ISO',                  telescope.define_iso),
             ('S','Set Camera Shutter Speed',        telescope.shutter_speed),
+            ('N','Set Camera Number of Pictures',   telescope.numberofpictures),
             ('C','Capture Camera Image',            telescope.capture_image),
             ('q','Exit',                            telescope.exit)
             ]
@@ -394,16 +395,29 @@ class Telescope():
 
 #******DAN, ARI, KIM, NEW CAMERA DEF************************************
     def define_iso(self):
-        iso_value = self.get_param("Set ISO value (100, 200, 400, 800, 1600, 3200, 6400):")
-        telescope.camera_iso = str(iso_value)
-        cmd = "gphoto2 --set-config capture=on --set-config iso="+str(iso_value)
-        os.system(cmd)
+        iso_value = self.get_param("Set ISO value 100, 200, 400, 800, 1600, 3200, 6400 [default 1600]")
+        if len(iso_value)>0:
+            telescope.camera_iso = str(iso_value)
+        else:
+            telescope.camera_iso = "1600"
+        #TODO:
+        #cmd = "gphoto2 --set-config capture=on --set-config iso="+str(iso_value)
 
     def shutter_speed(self):
-        shutter_value = self.get_param("Enter Exposure Time (seconds):")
-        telescope.camera_shutter = str(shutter_value)
-        cmd = "gphoto2 --set-config capture=on --set-config shutterspeed="+str(shutter_value)
-        os.system(cmd)
+        shutter_value = self.get_param("Enter Exposure Time in Seconds [default 1]")
+        if len(shutter_value)>0:
+            telescope.camera_shutter = str(shutter_value)
+        else:
+            telescope.camera_shutter = "1"
+        #TODO:
+        #cmd = "gphoto2 --set-config capture=on --set-config shutterspeed="+str(shutter_value)
+
+    def numberofpictures(self):
+        num_value = self.get_param("Number of pictures [default 1]")
+        if len(num_value)>0:
+            telescope.camera_numberofpictures = int(num_value)
+        else:
+            telescope.camera_numberofpictures = 1
 
 #def rename(name, num):
 #renamecmd = "mv %s %s%i.jpg"%("capt0000.jpg",name,num)
