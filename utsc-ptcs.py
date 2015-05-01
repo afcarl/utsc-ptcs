@@ -180,6 +180,11 @@ class Status():
         for (index,element) in enumerate(telescope.robofocus_states):
             self.window_telescope.addstr(index+2, 2+46, element[0])                    
             self.window_telescope.addstr(index+2, 2+46+10, element[2])                    
+        
+        self.window_telescope.addstr(4, 48, "Camera settings", curses.A_BOLD)                    
+        self.window_telescope.addstr(5, 48, "ISO       %s"% telescope.camera_iso)                    
+        self.window_telescope.addstr(6, 48, "Shutter   %ss"% telescope.camera_shutter)                    
+        self.window_telescope.addstr(7, 48, "Pictures  %d"% telescope.camera_numberofpictures)                    
         self.window_telescope.refresh()
 
 telescope = None    # Singleton
@@ -187,6 +192,9 @@ class Telescope():
     def __init__(self, stdscreen):
         global telescope
         telescope = self
+        self.camera_iso     = "1600"
+        self.camera_shutter = "1"
+        self.camera_numberofpictures = 1
         self.last_telescope_update = 0
         self.last_robofocus_update = 0
         self.conn = None
@@ -387,12 +395,14 @@ class Telescope():
 #******DAN, ARI, KIM, NEW CAMERA DEF************************************
     def define_iso(self):
         iso_value = self.get_param("Set ISO value (100, 200, 400, 800, 1600, 3200, 6400):")
+        telescope.camera_iso = str(iso_value)
         cmd = "gphoto2 --set-config capture=on --set-config iso="+str(iso_value)
         os.system(cmd)
 
     def shutter_speed(self):
-        exposure_value = self.get_param("Enter Exposure Time (seconds):")
-        cmd = "gphoto2 --set-config capture=on --set-config shutterspeed="+str(exposure_value)
+        shutter_value = self.get_param("Enter Exposure Time (seconds):")
+        telescope.camera_shutter = str(shutter_value)
+        cmd = "gphoto2 --set-config capture=on --set-config shutterspeed="+str(shutter_value)
         os.system(cmd)
 
 #def rename(name, num):
