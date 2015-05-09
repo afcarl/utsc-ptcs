@@ -494,6 +494,12 @@ class Telescope():
             telescope.camera_status = 2
             telescope.camera_numtaken += 1
 
+        # Bulb mode not implemented yet:
+        #    cmd = "gphoto2 --set-config shutterspeed=bulb"
+        #    cmd = "gphoto2 --set-config bulb=1 eosremoterelease=Immediate --wait-event=120s --set-config eosremoterelease=Off --wait-event-and-download=2s"
+        #
+
+        # Live previewing not implemented yet:
         #root = tk.Tk()
         #root.geometry('400x400')
         #canvas = tk.Canvas(root,width=400,height=400)
@@ -502,10 +508,8 @@ class Telescope():
         #image = ImageTk.PhotoImage(pilImage)
         #imagesprite = canvas.create_image(0,0,image=image,anchor=tk.NW)
         #root.after(1000, lambda: root.destroy()) # Destroy the widget after 30 seconds
-
         #root.mainloop()
 
-        # os.system('mv *.cr2 '+folder+'.')
 
 #******NEW CAMERA DEF************************************
 
