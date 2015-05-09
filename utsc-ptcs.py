@@ -71,12 +71,12 @@ class Menu():
             ('m','Move RoboFocus',                  telescope.robofocus_userinput),
             #('r','Target right ascension',          telescope.set_target_rightascension), 
             #('d','Target declination',              telescope.set_target_declination), 
-            ('c','Execute custom telescope command',telescope.send_custom_command),
-            ('r','Read Camera',                     telescope.read_camera),
-            ('I','Set Camera ISO',                  telescope.define_iso),
-            ('S','Set Camera Shutter Speed',        telescope.shutter_speed),
-            ('N','Set Camera Number of Pictures',   telescope.numberofpictures),
-            ('C','Capture Camera Image',            telescope.capture_image),
+            ('C','Execute custom telescope command',telescope.send_custom_command),
+            ('r','Read camera',                     telescope.read_camera),
+            ('I','Set camera ISO',                  telescope.define_iso),
+            ('S','Set camera shutter speed',        telescope.shutter_speed),
+            ('N','Set camera number of pictures',   telescope.numberofpictures),
+            ('c','Capture images',                  telescope.capture_images),
             ('q','Exit',                            telescope.exit)
             ]
         self.window = curses.newwin(len(self.menuitems)+2,67,4,2)                                  
@@ -197,7 +197,7 @@ class Status():
             self.window_telescope.addstr(6, 48, "Shutter   %ss"% telescope.camera_shutter)                    
         else:
             self.window_telescope.addstr(6, 48, "Shutter   %s"% telescope.camera_shutter)                    
-        self.window_telescope.addstr(7, 48, "Pictures  %d"% telescope.camera_numberofpictures)                    
+        self.window_telescope.addstr(7, 48, "Num       %d/%d"% (telescope.camera_numtaken,telescope.camera_num))                   
         self.window_telescope.refresh()
 
 telescope = None    # Singleton
@@ -208,7 +208,10 @@ class Telescope():
         self.camera         = "Never read"
         self.camera_iso     = "N/A"
         self.camera_shutter = "N/A"
-        self.camera_numberofpictures = 1
+        self.camera_num = 1
+        self.camera_status = 0
+        self.camera_numtaken = 0
+        self.camera_path = None
         self.last_telescope_update = 0
         self.last_robofocus_update = 0
         self.conn = None
@@ -324,6 +327,7 @@ class Telescope():
             # Refresh display
             self.menu.display()
             self.status.display()
+            self.camera_check()
     
     def push_message(self, message):
         self.status.push_message(message)
@@ -436,7 +440,7 @@ class Telescope():
                             if "Current:" in line:
                                 telescope.camera_shutter = line.split("Current:")[1].strip()
             else:
-                self.push_message("No camera not found.")
+                self.push_message("No camera found.")
 
     def define_iso(self):
         iso_value = self.get_param("Set ISO value 100, 200, 400, 800, 1600, 3200, 6400:")
@@ -453,15 +457,15 @@ class Telescope():
     def numberofpictures(self):
         num_value = self.get_param("Number of pictures [default 1]")
         if len(num_value)>0:
-            telescope.camera_numberofpictures = int(num_value)
+            telescope.camera_num = int(num_value)
         else:
-            telescope.camera_numberofpictures = 1
+            telescope.camera_num = 1
 
 #def rename(name, num):
 #renamecmd = "mv %s %s%i.jpg"%("capt0000.jpg",name,num)
 #os.system(renamecmd)
 
-    def capture_image(self):
+    def capture_images(self):
         filename = self.get_param("Filename [default: test]")
         self.read_camera()
         if len(filename)<1:
@@ -470,25 +474,36 @@ class Telescope():
         if not os.path.exists(folder):
             self.push_message("Creating folder '"+folder+"'.")
             os.system("mkdir "+folder)
-        path = ''+folder+''+filename
-        for a in range(0,telescope.camera_numberofpictures):
-            self.push_message("Taking picture %d of %d." %(a+1,telescope.camera_numberofpictures))
-            cmd = "gphoto2 --capture-image-and-download --force-overwrite --filename=capt0000.jpg"
-            os.system(cmd)
-            #rename(filename, a)
-            renamecmd = "cp %s %s_%i.jpg"%("capt0000.jpg",path,a)
-            os.system(renamecmd)
+        telescope.camera_path = ''+folder+''+filename
+        telescope.camera_numtaken = 0
+        telescope.camera_status = 1
 
-            root = tk.Tk()
-            root.geometry('400x400')
-            canvas = tk.Canvas(root,width=400,height=400)
-            canvas.pack()
-            pilImage = Image.open(path+"_"+str(a)+".jpg").resize((400, 400),Image.ANTIALIAS)
-            image = ImageTk.PhotoImage(pilImage)
-            imagesprite = canvas.create_image(0,0,image=image,anchor=tk.NW)
-            root.after(1000, lambda: root.destroy()) # Destroy the widget after 30 seconds
+    def camera_check(self):
+        if telescope.camera_status == 0:
+            return
+        if telescope.camera_numtaken >= telescope.camera_num:
+            if os.path.isfile(".gphoto.tmp"):
+                self.push_message("All pictures taken.")
+                telescope.camera_status = 0
+            return
+             
+        if telescope.camera_status==1 or os.path.isfile(".gphoto.tmp"):
+            self.push_message("Taking picture %d of %d." %(telescope.camera_numtaken+1,telescope.camera_num))
+            os.system("rm -f .gphoto.tmp")
+            os.system("(gphoto2 --capture-image-and-download --force-overwrite --filename=%s_%04d.jpg >/dev/null; echo 1 > .gphoto.tmp) &"%(telescope.camera_path,telescope.camera_numtaken))
+            telescope.camera_status = 2
+            telescope.camera_numtaken += 1
 
-            root.mainloop()
+        #root = tk.Tk()
+        #root.geometry('400x400')
+        #canvas = tk.Canvas(root,width=400,height=400)
+        #canvas.pack()
+        #pilImage = Image.open(telescope.camera_path+"_"+str(a)+".jpg").resize((400, 400),Image.ANTIALIAS)
+        #image = ImageTk.PhotoImage(pilImage)
+        #imagesprite = canvas.create_image(0,0,image=image,anchor=tk.NW)
+        #root.after(1000, lambda: root.destroy()) # Destroy the widget after 30 seconds
+
+        #root.mainloop()
 
         # os.system('mv *.cr2 '+folder+'.')
 
