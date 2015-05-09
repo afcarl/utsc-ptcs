@@ -25,6 +25,9 @@ import curses
 import socket
 import struct
 import time
+import sys
+import subprocess
+import signal
 import Tkinter as tk
 
 
@@ -69,6 +72,7 @@ class Menu():
             #('r','Target right ascension',          telescope.set_target_rightascension), 
             #('d','Target declination',              telescope.set_target_declination), 
             ('c','Execute custom telescope command',telescope.send_custom_command),
+            ('r','Read Camera',                     telescope.read_camera),
             ('I','Set Camera ISO',                  telescope.define_iso),
             ('S','Set Camera Shutter Speed',        telescope.shutter_speed),
             ('N','Set Camera Number of Pictures',   telescope.numberofpictures),
@@ -111,7 +115,7 @@ class Menu():
 class Status():                                                          
     def __init__(self):
         ypos = 4+telescope.menu.window.getmaxyx()[0]
-        self.window_status = curses.newwin(7,67,ypos,2)                                  
+        self.window_status = curses.newwin(8,67,ypos,2)                                  
         ypos += self.window_status.getmaxyx()[0]
         self.window_telescope = curses.newwin(3+len(telescope.telescope_states),67,ypos,2)                                  
         self.maxmessages = 16;
@@ -121,11 +125,13 @@ class Status():
         self.window_messages = curses.newwin(3+self.maxmessages,67,ypos,2)                                  
 
     def push_message(self,message):
-        if len(message)>0:
-            timestamp = time.strftime("%H:%M:%S", time.gmtime())                    
-            self.messages.insert(0,"%s %s" %(timestamp,message))
-            if len(self.messages)>self.maxmessages:
-                self.messages.pop()
+        if isinstance(message, str):
+            message = message.strip()
+            if len(message)>0:
+                timestamp = time.strftime("%H:%M:%S", time.gmtime())                    
+                self.messages.insert(0,"%s %s" %(timestamp,message))
+                if len(self.messages)>self.maxmessages:
+                    self.messages.pop()
         
     def display(self):                                                       
         self.window_status.clear()
@@ -160,6 +166,9 @@ class Status():
         else:
             stellarium_mode = "Go to next coordinates"
         self.window_status.addstr(5, 19, stellarium_mode )                    
+        
+        self.window_status.addstr(6, 2, "Camera")                    
+        self.window_status.addstr(6, 19, telescope.camera)                    
         self.window_status.refresh()
         
         # Status Messages
@@ -184,7 +193,10 @@ class Status():
         
         self.window_telescope.addstr(4, 48, "Camera settings", curses.A_BOLD)                    
         self.window_telescope.addstr(5, 48, "ISO       %s"% telescope.camera_iso)                    
-        self.window_telescope.addstr(6, 48, "Shutter   %ss"% telescope.camera_shutter)                    
+        if "N/A" not in telescope.camera_shutter:
+            self.window_telescope.addstr(6, 48, "Shutter   %ss"% telescope.camera_shutter)                    
+        else:
+            self.window_telescope.addstr(6, 48, "Shutter   %s"% telescope.camera_shutter)                    
         self.window_telescope.addstr(7, 48, "Pictures  %d"% telescope.camera_numberofpictures)                    
         self.window_telescope.refresh()
 
@@ -193,8 +205,9 @@ class Telescope():
     def __init__(self, stdscreen):
         global telescope
         telescope = self
-        self.camera_iso     = "1600"
-        self.camera_shutter = "1"
+        self.camera         = "Never read"
+        self.camera_iso     = "N/A"
+        self.camera_shutter = "N/A"
         self.camera_numberofpictures = 1
         self.last_telescope_update = 0
         self.last_robofocus_update = 0
@@ -394,23 +407,48 @@ class Telescope():
             self.push_message("Did not receive user input.")
 
 #******DAN, ARI, KIM, NEW CAMERA DEF************************************
+    def read_camera(self):
+        # Kill procs
+        if sys.platform == "darwin":
+            print("Killing PTPCamera process")
+            os.system("killall PTPCamera")
+            os.system("killall Type4Camera")
+        # Get Name
+        os.system("gphoto2 --auto-detect > .gphoto.tmp")
+        with open(".gphoto.tmp") as f:
+            lines = f.readlines()
+            if len(lines)>2:
+                line = lines[2]
+                if "usb:" in line:
+                    telescope.camera = line.split("usb:")[0].strip()
+                    # Get ISO Setting
+                    os.system("gphoto2 --get-config=/main/settings/iso > .gphoto.tmp" )
+                    with open(".gphoto.tmp") as f:
+                        lines = f.readlines()
+                        for line in lines:
+                            if "Current:" in line:
+                                telescope.camera_iso = line.split("Current:")[1].strip()
+                    # Get Shutter speed
+                    os.system("gphoto2 --get-config=/main/settings/shutterspeed > .gphoto.tmp" )
+                    with open(".gphoto.tmp") as f:
+                        lines = f.readlines()
+                        for line in lines:
+                            if "Current:" in line:
+                                telescope.camera_shutter = line.split("Current:")[1].strip()
+            else:
+                self.push_message("No camera not found.")
+
     def define_iso(self):
-        iso_value = self.get_param("Set ISO value 100, 200, 400, 800, 1600, 3200, 6400 [default 1600]")
+        iso_value = self.get_param("Set ISO value 100, 200, 400, 800, 1600, 3200, 6400:")
         if len(iso_value)>0:
-            telescope.camera_iso = str(iso_value)
-        else:
-            telescope.camera_iso = "1600"
-        #TODO:
-        #cmd = "gphoto2 --set-config capture=on --set-config iso="+str(iso_value)
+            os.system("gphoto2 --set-config capture=on --set-config iso=" + iso_value )
+        self.read_camera()
 
     def shutter_speed(self):
-        shutter_value = self.get_param("Enter Exposure Time in Seconds [default 1]")
+        shutter_value = self.get_param("Enter exposure time in s, e.g. 1, 5, 20, 1/10:")
         if len(shutter_value)>0:
-            telescope.camera_shutter = str(shutter_value)
-        else:
-            telescope.camera_shutter = "1"
-        #TODO:
-        #cmd = "gphoto2 --set-config capture=on --set-config shutterspeed="+str(shutter_value)
+            os.system("gphoto2 --set-config capture=on --set-config shutterspeed=" + shutter_value )
+        self.read_camera()
 
     def numberofpictures(self):
         num_value = self.get_param("Number of pictures [default 1]")
@@ -424,11 +462,8 @@ class Telescope():
 #os.system(renamecmd)
 
     def capture_image(self):
-        try:
-            numphoto = int(self.get_param("Number of photos to take [default: 1]"))
-        except:
-            numphoto = 1
         filename = self.get_param("Filename [default: test]")
+        self.read_camera()
         if len(filename)<1:
             filename = "test"
         folder = 'pictures/'
@@ -436,8 +471,9 @@ class Telescope():
             self.push_message("Creating folder '"+folder+"'.")
             os.system("mkdir "+folder)
         path = ''+folder+''+filename
-        for a in range(0,numphoto):
-            cmd = "gphoto2 --capture-image-and-download --force-overwrite"
+        for a in range(0,telescope.camera_numberofpictures):
+            self.push_message("Taking picture %d of %d." %(a+1,telescope.camera_numberofpictures))
+            cmd = "gphoto2 --capture-image-and-download --force-overwrite --filename=capt0000.jpg"
             os.system(cmd)
             #rename(filename, a)
             renamecmd = "cp %s %s_%i.jpg"%("capt0000.jpg",path,a)
