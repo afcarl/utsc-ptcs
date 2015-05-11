@@ -18,7 +18,7 @@
 # along with UTSC | PCTS.  If not, see <http://www.gnu.org/licenses/>.
 #
 import serial
-from PIL import ImageTk, Image
+#from PIL import ImageTk, Image
 import os
 import time
 import curses
@@ -28,7 +28,7 @@ import time
 import sys
 import subprocess
 import signal
-import Tkinter as tk
+#import Tkinter as tk
 
 
 ## Conversion functions
@@ -426,14 +426,14 @@ class Telescope():
                 if "usb:" in line:
                     telescope.camera = line.split("usb:")[0].strip()
                     # Get ISO Setting
-                    os.system("gphoto2 --get-config=/main/settings/iso > .gphoto.tmp" )
+                    os.system("gphoto2 --get-config=iso > .gphoto.tmp" )
                     with open(".gphoto.tmp") as f:
                         lines = f.readlines()
                         for line in lines:
                             if "Current:" in line:
                                 telescope.camera_iso = line.split("Current:")[1].strip()
                     # Get Shutter speed
-                    os.system("gphoto2 --get-config=/main/settings/shutterspeed > .gphoto.tmp" )
+                    os.system("gphoto2 --get-config=shutterspeed > .gphoto.tmp" )
                     with open(".gphoto.tmp") as f:
                         lines = f.readlines()
                         for line in lines:
