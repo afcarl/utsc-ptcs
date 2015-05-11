@@ -72,7 +72,7 @@ class Menu():
             #('r','Target right ascension',          telescope.set_target_rightascension), 
             #('d','Target declination',              telescope.set_target_declination), 
             ('C','Execute custom telescope command',telescope.send_custom_command),
-            ('r','Read camera',                     telescope.read_camera),
+            ('r','Read camera settings',            telescope.read_camera),
             ('I','Set camera ISO',                  telescope.define_iso),
             ('S','Set camera shutter speed',        telescope.shutter_speed),
             ('N','Set camera number of pictures',   telescope.numberofpictures),
