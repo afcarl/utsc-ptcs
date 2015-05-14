@@ -67,11 +67,11 @@ class Menu():
             ('t','Toggle Stellarium mode',          telescope.toggle_stellarium_mode),
             # ('p','Write telescope readout to file', telescope.write_telescope_readout),
             #('b','Return to previous target',       telescope.previous_alignment),
-            #('g','Go to target',                    telescope.go_to_target), 
+            ('g','Go to target',                    telescope.go_to_target), 
             ('m','Move RoboFocus',                  telescope.robofocus_userinput),
-            #('r','Target right ascension',          telescope.set_target_rightascension), 
+            #('R','Target right ascension',          telescope.set_target_rightascension), 
             #('d','Target declination',              telescope.set_target_declination), 
-            ('C','Execute custom telescope command',telescope.send_custom_command),
+            #('C','Execute custom telescope command',telescope.send_custom_command),
             ('r','Read camera settings',            telescope.read_camera),
             ('I','Set camera ISO',                  telescope.define_iso),
             ('S','Set camera shutter speed',        telescope.shutter_speed),
@@ -193,10 +193,13 @@ class Status():
         
         self.window_telescope.addstr(4, 48, "Camera settings", curses.A_BOLD)                    
         self.window_telescope.addstr(5, 48, "ISO       %s"% telescope.camera_iso)                    
-        if "N/A" not in telescope.camera_shutter and "bulb" not in telescope.camera_shutter:
-            self.window_telescope.addstr(6, 48, "Shutter   %ss"% telescope.camera_shutter)                    
+        if "bulb" not in telescope.camera_shutter:
+            if "N/A" not in telescope.camera_shutter and "bulb":
+                self.window_telescope.addstr(6, 48, "Shutter   %ss"% telescope.camera_shutter)                    
+            else:
+                self.window_telescope.addstr(6, 48, "Shutter   %s"% telescope.camera_shutter)                    
         else:
-            self.window_telescope.addstr(6, 48, "Shutter   %s"% telescope.camera_shutter)                    
+            self.window_telescope.addstr(6, 48, "Shutter   %ds (b)"% telescope.camera_longexpshutter)                    
         self.window_telescope.addstr(7, 48, "Num       %d/%d"% (telescope.camera_numtaken,telescope.camera_num))                   
         self.window_telescope.refresh()
 
@@ -208,7 +211,7 @@ class Telescope():
         self.camera         = "Never read"
         self.camera_iso     = "N/A"
         self.camera_shutter = "N/A"
-        self.camera_longexpshutter = 31
+        self.camera_longexpshutter = 5
         self.camera_num = 1
         self.camera_status = 0
         self.camera_numtaken = 0
@@ -498,9 +501,9 @@ class Telescope():
                 self.push_message("Taking picture %d of %d." %(telescope.camera_numtaken+1,telescope.camera_num))
                 os.system("(gphoto2 --capture-image-and-download --force-overwrite --filename=%s_%04d.jpg >/dev/null; echo 1 > .gphoto.tmp) &"%(telescope.camera_path,telescope.camera_numtaken))
             else:
-                self.push_message("Taking picture %d of %d. (%ds long exp)" %(telescope.camera_numtaken+1,telescope.camera_num,telescope.camera_longexpshutter))
+                self.push_message("Taking picture %d of %d (%ds long exp)." %(telescope.camera_numtaken+1,telescope.camera_num,telescope.camera_longexpshutter))
                 # gphoto2 --wait-event=2s --set-config eosremoterelease=Immediate --wait-event=5s --set-config eosremoterelease=Off --wait-event-and-download=5s
-                os.system("(gphoto2 --wait-event=2s --set-config eosremoterelease=Immediate --wait-event=%ds --set-config eosremoterelease=Off --wait-event-and-download=5s --force-overwrite --filename=%s_%04d.jpg >/dev/null; echo 1 > .gphoto.tmp) &"% (telescope.camera_longexpshutter, telescope.camera_path,telescope.camera_numtaken))
+                os.system("(gphoto2 --wait-event=2s --set-config eosremoterelease=Immediate --wait-event=%ds --set-config eosremoterelease=Off --force-overwrite --filename=%s_%04d.jpg --wait-event-and-download=5s >/dev/null; echo 1 > .gphoto.tmp) &"% (telescope.camera_longexpshutter, telescope.camera_path,telescope.camera_numtaken))
             telescope.camera_status = 2
             telescope.camera_numtaken += 1
             
