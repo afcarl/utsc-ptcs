@@ -193,7 +193,7 @@ class Status():
         
         self.window_telescope.addstr(4, 48, "Camera settings", curses.A_BOLD)                    
         self.window_telescope.addstr(5, 48, "ISO       %s"% telescope.camera_iso)                    
-        if "N/A" not in telescope.camera_shutter:
+        if "N/A" not in telescope.camera_shutter and "bulb" not in telescope.camera_shutter:
             self.window_telescope.addstr(6, 48, "Shutter   %ss"% telescope.camera_shutter)                    
         else:
             self.window_telescope.addstr(6, 48, "Shutter   %s"% telescope.camera_shutter)                    
@@ -208,6 +208,7 @@ class Telescope():
         self.camera         = "Never read"
         self.camera_iso     = "N/A"
         self.camera_shutter = "N/A"
+        self.camera_longexpshutter = 31
         self.camera_num = 1
         self.camera_status = 0
         self.camera_numtaken = 0
@@ -451,7 +452,11 @@ class Telescope():
     def shutter_speed(self):
         shutter_value = self.get_param("Enter exposure time in s, e.g. 1, 5, 20, 1/10:")
         if len(shutter_value)>0:
-            os.system("gphoto2 --set-config capture=on --set-config shutterspeed=" + shutter_value )
+            if int(shutter_value)<30:
+                os.system("gphoto2 --set-config capture=on --set-config shutterspeed=" + shutter_value )
+            else:
+                os.system("gphoto2 --set-config shutterspeed=bulb")
+                telescope.camera_longexpshutter = int(shutter_value)
         self.read_camera()
 
     def numberofpictures(self):
@@ -488,11 +493,17 @@ class Telescope():
             return
              
         if telescope.camera_status==1 or os.path.isfile(".gphoto.tmp"):
-            self.push_message("Taking picture %d of %d." %(telescope.camera_numtaken+1,telescope.camera_num))
             os.system("rm -f .gphoto.tmp")
-            os.system("(gphoto2 --capture-image-and-download --force-overwrite --filename=%s_%04d.jpg >/dev/null; echo 1 > .gphoto.tmp) &"%(telescope.camera_path,telescope.camera_numtaken))
+            if "bulb" not in telescope.camera_shutter:
+                self.push_message("Taking picture %d of %d." %(telescope.camera_numtaken+1,telescope.camera_num))
+                os.system("(gphoto2 --capture-image-and-download --force-overwrite --filename=%s_%04d.jpg >/dev/null; echo 1 > .gphoto.tmp) &"%(telescope.camera_path,telescope.camera_numtaken))
+            else:
+                self.push_message("Taking picture %d of %d. (%ds long exp)" %(telescope.camera_numtaken+1,telescope.camera_num,telescope.camera_longexpshutter))
+                # gphoto2 --wait-event=2s --set-config eosremoterelease=Immediate --wait-event=5s --set-config eosremoterelease=Off --wait-event-and-download=5s
+                os.system("(gphoto2 --wait-event=2s --set-config eosremoterelease=Immediate --wait-event=%ds --set-config eosremoterelease=Off --wait-event-and-download=5s --force-overwrite --filename=%s_%04d.jpg >/dev/null; echo 1 > .gphoto.tmp) &"% (telescope.camera_longexpshutter, telescope.camera_path,telescope.camera_numtaken))
             telescope.camera_status = 2
             telescope.camera_numtaken += 1
+            
 
         # Bulb mode not implemented yet:
         #    cmd = "gphoto2 --set-config shutterspeed=bulb"
