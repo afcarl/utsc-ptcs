@@ -372,7 +372,7 @@ class Telescope():
         if os.uname()[0]=="Darwin":
             default_port_name = '/dev/tty.usbserial'
         else:
-            default_port_name = '/dev/ttyUSB0'
+            default_port_name = '/dev/ttyS0'
         port_name = self.get_param("Telescope serial port [leave blank for '"+default_port_name+"']")
         try:
             if port_name == '':
@@ -455,7 +455,11 @@ class Telescope():
     def shutter_speed(self):
         shutter_value = self.get_param("Enter exposure time in s, e.g. 1, 5, 20, 1/10:")
         if len(shutter_value)>0:
-            if int(shutter_value)<30:
+            try:
+                svi = int(shutter_value)
+            except:
+                svi = 1
+            if svi<30:
                 os.system("gphoto2 --set-config capture=on --set-config shutterspeed=" + shutter_value )
             else:
                 os.system("gphoto2 --set-config shutterspeed=bulb")
@@ -568,7 +572,7 @@ class Telescope():
         if os.uname()[0]=="Darwin":
             default_port_name = '/dev/tty.usbserial'
         else:
-            default_port_name = '/dev/ttyS0'
+            default_port_name = '/dev/ttyUSB0'
         port_name = self.get_param("RoboFocus serial port [leave blank for '"+default_port_name+"']")
         try:
             if port_name == '':
