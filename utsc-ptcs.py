@@ -316,6 +316,9 @@ class Telescope():
                             data = struct.unpack('<hhQIi',data)
                             ra_string, dec_string = ra_raw2str(data[-2]), dec_raw2str(data[-1])
                             self.push_message("Received from stellarium: %s %s" % (ra_string,dec_string))
+                            if dec_string[-2:]=="60":
+                                dec_string = dec_string[:-2]+"59"
+                                self.push_message("Converted 60->59.")
                             self.send('!CStr' + ra_string + ';')
                             self.send('!CStd' + dec_string + ';')
                             if self.stellarium_mode==0:
