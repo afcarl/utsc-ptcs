@@ -183,9 +183,9 @@ class Status():
                     message = "         " + message
                 notfirst = 1
                 if index<self.maxmessages:
-                    self.window_messages.addstr(2+index, 4, message[:50])
+                    self.window_messages.addstr(2+index, 4, message[:61])
                 index += 1                   
-                message = message[50:]
+                message = message[61:]
         self.window_messages.refresh()
         
         # Telescope readout
@@ -424,7 +424,9 @@ class Telescope():
             return False
     
     def set_alignment_side(self):
-        direction = self.get_param("Set alignment side [West/East]")
+        direction = self.get_param("Set alignment side [West/East] (blank for West)")
+        if len(direction) ==0:
+            direction = "West"
         if direction == "West" or direction == "East": 
             self.send('!ASas' + direction + ';')
         else:
