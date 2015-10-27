@@ -256,6 +256,12 @@ class Telescope():
                             self.serialport.write(element[1]) 
                             time.sleep(0.05)
                             ret = self.serialport.read(1024).strip() 
+                            # DEBUG
+                            if 1:
+                                with open("debug_log.txt","a+") as debug_f:
+                                    debug_f.write(ret)
+                                    debug_f.write("\n")
+
                             atcl_asynch = ret.split(chr(0x9F))
                             if len(atcl_asynch)>1:
                                 ret = atcl_asynch[0]
@@ -267,6 +273,11 @@ class Telescope():
                                 if ret[-1] == ";":
                                     ret = ret[:-1]
                             else:
+                                ret = "N/A"
+                            
+                            
+                            if "Internal error" in ret:
+                                self.push_message(ret)
                                 ret = "N/A"
                             element[2] = ret
                     except:
