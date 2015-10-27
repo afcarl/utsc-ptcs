@@ -175,8 +175,17 @@ class Status():
         self.window_messages.clear()
         self.window_messages.border(0)
         self.window_messages.addstr(1, 2, "Status messages", curses.A_BOLD)                    
-        for (index,message) in enumerate(self.messages):
-            self.window_messages.addstr(2+index, 4, message)                    
+        index = 0
+        for (message_index,message) in enumerate(self.messages):
+            notfirst = 0
+            while len(message)>0:
+                if notfirst:
+                    message = "         " + message
+                notfirst = 1
+                if index<self.maxmessages:
+                    self.window_messages.addstr(2+index, 4, message[:50])
+                index += 1                   
+                message = message[50:]
         self.window_messages.refresh()
         
         # Telescope readout
@@ -257,7 +266,7 @@ class Telescope():
                             time.sleep(0.05)
                             ret = self.serialport.read(1024).strip() 
                             # DEBUG
-                            if 1:
+                            if 0:
                                 with open("debug_log.txt","a+") as debug_f:
                                     debug_f.write(ret)
                                     debug_f.write("\n")
