@@ -59,24 +59,24 @@ class Menu():
         self.position = 0                                                    
         self.menuitems = [
             ('o','Open serial port for telescope',  telescope.open_port), 
-            ('O','Open serial port for RoboFocus',  telescope.open_robofocus_port), 
+            ('s','Start Stellarium server (CTRL+1 to align/goto)',         telescope.start_server),
+            #('O','Open serial port for RoboFocus',  telescope.open_robofocus_port), 
             ('e','Set alignment side',              telescope.set_alignment_side), 
             #('a','Align from target',               telescope.align_from_target), 
             # ('v','Void alignment',                  telescope.void_alignment),
-            ('s','Start Stellarium server',         telescope.start_server),
             ('t','Toggle Stellarium mode',          telescope.toggle_stellarium_mode),
             # ('p','Write telescope readout to file', telescope.write_telescope_readout),
             #('b','Return to previous target',       telescope.previous_alignment),
-            ('g','Go to target',                    telescope.go_to_target), 
-            ('m','Move RoboFocus',                  telescope.robofocus_userinput),
+            #('g','Go to target',                    telescope.go_to_target), 
+            #('m','Move RoboFocus',                  telescope.robofocus_userinput),
             #('R','Target right ascension',          telescope.set_target_rightascension), 
             #('d','Target declination',              telescope.set_target_declination), 
             #('C','Execute custom telescope command',telescope.send_custom_command),
-            ('r','Read camera settings',            telescope.read_camera),
-            ('I','Set camera ISO',                  telescope.define_iso),
-            ('S','Set camera shutter speed',        telescope.shutter_speed),
-            ('N','Set camera number of pictures',   telescope.numberofpictures),
-            ('c','Capture images',                  telescope.capture_images),
+            #('r','Read camera settings',            telescope.read_camera),
+            #('I','Set camera ISO',                  telescope.define_iso),
+            #('S','Set camera shutter speed',        telescope.shutter_speed),
+            #('N','Set camera number of pictures',   telescope.numberofpictures),
+            #('c','Capture images',                  telescope.capture_images),
             ('q','Exit',                            telescope.exit)
             ]
         self.window = curses.newwin(len(self.menuitems)+2,67,4,2)                                  
@@ -115,10 +115,10 @@ class Menu():
 class Status():                                                          
     def __init__(self):
         ypos = 4+telescope.menu.window.getmaxyx()[0]
-        self.window_status = curses.newwin(8,67,ypos,2)                                  
+        self.window_status = curses.newwin(6,67,ypos,2)                                  
         ypos += self.window_status.getmaxyx()[0]
         self.window_telescope = curses.newwin(3+len(telescope.telescope_states),67,ypos,2)                                  
-        self.maxmessages = 16;
+        self.maxmessages = 9;
         self.messages = []
         self.push_message("PTCS initialized.")
         ypos += self.window_telescope.getmaxyx()[0]
@@ -138,37 +138,40 @@ class Status():
         self.window_status.border(0)
         # Time
         self.window_status.addstr(1, 2, "Time (UTC)")                    
-        self.window_status.addstr(1, 19, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()))                    
+        self.window_status.addstr(1, 20, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()))                    
         # Port Telescope
         self.window_status.addstr(2, 2, "Telescope port")                    
         portname = "Not open"
         if telescope.serialport:
             portname = telescope.serialport.name
-        self.window_status.addstr(2, 19, portname )                    
+        self.window_status.addstr(2, 20, portname )                    
         # Port Robofocus
-        self.window_status.addstr(3, 2, "RoboFocus port")                    
-        portname = "Not open"
-        if telescope.robofocus_serialport:
-            portname = telescope.robofocus_serialport.name
-        self.window_status.addstr(3, 19, portname )                    
+        i = 3
+        #self.window_status.addstr(3, 2, "RoboFocus port")                    
+        #portname = "Not open"
+        #if telescope.robofocus_serialport:
+        #    portname = telescope.robofocus_serialport.name
+        #self.window_status.addstr(3, 19, portname )                    
         # Server
-        self.window_status.addstr(4, 2, "Server")                    
+        self.window_status.addstr(i, 2, "Stellarium server")                    
         serverstatus = "Not running"
         if telescope.socket is not None:
             if telescope.conn is not None:
                 serverstatus = "Connected" 
             else:
                 serverstatus = "Waiting for connection" 
-        self.window_status.addstr(4, 19, serverstatus )                    
-        self.window_status.addstr(5, 2, "Stellarium mode")                    
+        self.window_status.addstr(i, 20, serverstatus )                    
+        i += 1
+        self.window_status.addstr(i, 2, "Stellarium mode")                    
         if telescope.stellarium_mode==0:
             stellarium_mode = "Align to next coordinates"
         else:
             stellarium_mode = "Go to next coordinates"
-        self.window_status.addstr(5, 19, stellarium_mode )                    
-        
-        self.window_status.addstr(6, 2, "Camera")                    
-        self.window_status.addstr(6, 19, telescope.camera)                    
+        self.window_status.addstr(i, 20, stellarium_mode )                    
+        i += 1
+         
+        #self.window_status.addstr(i, 2, "Camera")                    
+        #self.window_status.addstr(i, 19, telescope.camera)                    
         self.window_status.refresh()
         
         # Status Messages
@@ -239,7 +242,7 @@ class Telescope():
         self.screen.addstr(2, 2, "University of Toronto Scarborough | Python Telescope Control System", curses.A_BOLD)
         self.telescope_states= [
             ['Alignment state',              '!AGas;', ""],  
-            ['Side of the sky',              '!AGai;', ""],
+            ['Alignment side',               '!AGai;', ""],
             ['Current right ascension',      '!CGra;', ""],
             ['Current declination',          '!CGde;', ""],
             ['Target right ascension',       '!CGtr;', ""],
@@ -343,6 +346,7 @@ class Telescope():
                             self.send('!CStd' + dec_string + ';')
                             if self.stellarium_mode==0:
                                 self.align_from_target()
+                                self.stellarium_mode=1
                             else: 
                                 self.go_to_target()
                         elif len(data)==0:
@@ -429,6 +433,7 @@ class Telescope():
             direction = "West"
         if direction == "West" or direction == "East": 
             self.send('!ASas' + direction + ';')
+            self.stellarium_mode = 0 
         else:
             self.push_message("Not a valid alignment side.")
 
