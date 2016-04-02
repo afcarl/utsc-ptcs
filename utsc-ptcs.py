@@ -196,8 +196,10 @@ class Status():
         self.window_telescope.border(0)
         self.window_telescope.addstr(1, 2, "Telescope readout", curses.A_BOLD)                    
         for (index,element) in enumerate(telescope.telescope_states):
-            self.window_telescope.addstr(index+2, 2, element[0])                    
-            self.window_telescope.addstr(index+2, 28, element[2])                    
+            if len(element[0]):
+                self.window_telescope.addstr(index+2, 2, element[0])                    
+            if len(element[2]):
+                self.window_telescope.addstr(index+2, 28, element[2])                    
         self.window_telescope.addstr(1, 48, "RoboFocus readout", curses.A_BOLD)                    
         for (index,element) in enumerate(telescope.robofocus_states):
             self.window_telescope.addstr(index+2, 2+46, element[0])                    
