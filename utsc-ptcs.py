@@ -20,16 +20,45 @@
 import serial
 #from PIL import ImageTk, Image
 import os
-import time
 import curses
 import socket
 import struct
 import time
+import calendar
 import sys
 import subprocess
 import signal
+import client
 #import Tkinter as tk
 
+with open('apikey.txt', 'r') as content_file:
+    apikey = content_file.read().strip()
+#subid ="1544394"
+#client = client.Client()
+#client.login(apikey)
+##upres = client.upload("./calibration.jpg")
+##print(upres)
+##exit()
+##subid = upres["subid"]
+##print(subid)
+##
+##
+#subid = "1544449"
+#res = client.send_request('submissions/%s' %subid)
+#jobs = res.get('jobs',[])
+#if len(jobs):
+#    for j in jobs:
+#        if j is not None:
+#            break
+#    if j is not None:
+#        solved = j
+#
+#print(solved)
+#res = client.send_request('jobs/%s' %solved)
+#if res.get("status") == 'success':
+#    res = client.send_request('jobs/%s/calibration' %solved)
+#    print(res)
+#exit()
 
 ## Conversion functions
 def dec_str2raw(s):
@@ -61,7 +90,8 @@ class Menu():
             ('o','Open serial port for telescope',  telescope.open_port), 
             ('s','Start Stellarium server (CTRL+1 to align/goto)',         telescope.start_server),
             #('O','Open serial port for RoboFocus',  telescope.open_robofocus_port), 
-            ('e','Set alignment side',              telescope.set_alignment_side), 
+            ('e','Manual alignment',                telescope.set_alignment_side), 
+            ('a','Take image and auto align',       telescope.auto_align),
             #('a','Align from target',               telescope.align_from_target), 
             # ('v','Void alignment',                  telescope.void_alignment),
             ('t','Toggle Stellarium mode',          telescope.toggle_stellarium_mode),
@@ -228,6 +258,8 @@ class Telescope():
         self.camera_longexpshutter = 5
         self.camera_num = 1
         self.camera_status = 0
+        self.subid = None
+        self.lastcheck = None
         self.camera_numtaken = 0
         self.camera_path = None
         self.last_telescope_update = 0
@@ -360,7 +392,7 @@ class Telescope():
             # Refresh display
             self.menu.display()
             self.status.display()
-            self.camera_check()
+            self.auto_align_check()
     
     def push_message(self, message):
         self.status.push_message(message)
@@ -477,6 +509,78 @@ class Telescope():
                                 telescope.camera_shutter = line.split("Current:")[1].strip()
             else:
                 self.push_message("No camera found.")
+
+    def auto_align(self):
+        self.set_alignment_side()
+
+        if os.path.isfile(".gphoto.success"):
+            os.system("rm -f .gphoto.success")
+        if os.path.isfile(".gphoto.failed"):
+            os.system("rm -f .gphoto.failed")
+        telescope.camera_status = 4
+        self.push_message("Taking alignment image.")
+        os.system("gphoto2 --set-config capture=on --set-config iso=3200")
+        os.system("gphoto2 --set-config capture=on --set-config shutterspeed=10")
+        os.system("(gphoto2 --capture-image-and-download --force-overwrite --filename=calibration.jpg >/dev/null && touch .gphoto.success || touch .gphoto.failed) &")
+    
+    def auto_align_check(self):
+        if os.path.isfile(".gphoto.success"):
+            os.system("rm -f .gphoto.success")
+            telescope.camera_status = 0
+            self.push_message("Image captured. Uploading to astrometry.net ...")
+            self.client = client.Client()
+            self.client.login(apikey)
+            upres = self.client.upload("./calibration.jpg")
+            self.push_message("Sub id: %s. Waiting for result ..." % upres["subid"])
+            self.subid = upres["subid"]
+        if os.path.isfile(".gphoto.failed"):
+            os.system("rm -f .gphoto.failed")
+            self.push_message("Image capture failed.")
+            self.subid = None
+        if self.subid is not None: 
+            cur = calendar.timegm(time.gmtime())
+            if self.lastcheck is not None:
+                if cur-self.lastcheck>5:
+
+                    res = self.client.send_request('submissions/%s' %self.subid)
+                    jobs = res.get('jobs',[])
+                    solved = None
+                    if len(jobs):
+                        for j in jobs:
+                            if j is not None:
+                                break
+                        if j is not None:
+                            solved = j
+
+                    if solved is not None:
+                        self.push_message("Solved job: %s" % solved)
+                        res = self.client.send_request('jobs/%s' %solved)
+                        if res.get("status") == 'success':
+                            res = self.client.send_request('jobs/%s/calibration' %solved)
+                            self.push_message("Calibration: %s %s"% (res["ra"],res["dec"]))
+                            self.subid = None
+                            self.lastcheck = None
+                            if self.stellarium_mode == 0:
+                                ra_string, dec_string = ra_raw2str(float(res["ra"])/360.*4294967296.), dec_raw2str(float(res["dec"])/90.*1073741824.)
+                                self.push_message("Aligning telescope: %s %s" % (ra_string,dec_string))
+                                self.send('!CStr' + ra_string + ';')
+                                self.send('!CStd' + dec_string + ';')
+                                self.align_from_target()
+                                self.stellarium_mode = 1 
+                            else: 
+                                self.push_message("Cannot align.")
+                                
+                        else:
+                            self.push_message("Calibration failed.")
+                    else:
+                        self.push_message("Not solved yet.")
+
+                    self.lastcheck = cur
+            else:
+                self.lastcheck = cur
+
+
+
 
     def define_iso(self):
         iso_value = self.get_param("Set ISO value 100, 200, 400, 800, 1600, 3200, 6400:")
