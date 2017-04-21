@@ -36,7 +36,7 @@ with open('apikey.txt', 'r') as content_file:
 #subid ="1544394"
 #client = client.Client()
 #client.login(apikey)
-##upres = client.upload("./calibration.jpg")
+##upres = client.upload("./capt0000.jpg")
 ##print(upres)
 ##exit()
 ##subid = upres["subid"]
@@ -465,6 +465,10 @@ class Telescope():
         direction = self.get_param("Set alignment side [West/East] (blank for West)")
         if len(direction) ==0:
             direction = "West"
+        if direction == "W" or direction == "w":
+            direction = "West"
+        if direction == "E" or direction == "e":
+            direction = "East"
         if direction == "West" or direction == "East": 
             self.send('!ASas' + direction + ';')
             self.stellarium_mode = 0 
@@ -521,7 +525,7 @@ class Telescope():
         self.push_message("Taking alignment image.")
         os.system("gphoto2 --set-config capture=on --set-config iso=3200")
         os.system("gphoto2 --set-config capture=on --set-config shutterspeed=10")
-        os.system("(gphoto2 --capture-image-and-download --force-overwrite --filename=calibration.jpg >/dev/null && touch .gphoto.success || touch .gphoto.failed) &")
+        os.system("(gphoto2 --set-config eosremoterelease=Immediate --wait-event=10s --wait-event-and-download=2s --force-overwrite >/dev/null && touch .gphoto.success || touch .gphoto.failed) &")
     
     def auto_align_check(self):
         if os.path.isfile(".gphoto.success"):
@@ -530,7 +534,7 @@ class Telescope():
             self.push_message("Image captured. Uploading to astrometry.net ...")
             self.client = client.Client()
             self.client.login(apikey)
-            upres = self.client.upload("./calibration.jpg")
+            upres = self.client.upload("./capt0000.jpg")
             self.push_message("Sub id: %s. Waiting for result ..." % upres["subid"])
             self.subid = upres["subid"]
         if os.path.isfile(".gphoto.failed"):
