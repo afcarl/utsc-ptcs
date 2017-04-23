@@ -87,14 +87,14 @@ class Menu():
     def __init__(self):
         self.position = 0                                                    
         self.menuitems = [
-            ('o','Open serial port for telescope',  telescope.open_port), 
             ('s','Start Stellarium server (CTRL+1 to align/goto)',         telescope.start_server),
             #('O','Open serial port for RoboFocus',  telescope.open_robofocus_port), 
-            ('e','Manual alignment',                telescope.set_alignment_side), 
             ('a','Take image and auto align',       telescope.auto_align),
+            ('e','Manual alignment',                telescope.set_alignment_side), 
+            ('t','Toggle Stellarium mode',          telescope.toggle_stellarium_mode),
+            ('o','Open serial port for telescope',  telescope.open_port), 
             #('a','Align from target',               telescope.align_from_target), 
             # ('v','Void alignment',                  telescope.void_alignment),
-            ('t','Toggle Stellarium mode',          telescope.toggle_stellarium_mode),
             # ('p','Write telescope readout to file', telescope.write_telescope_readout),
             #('b','Return to previous target',       telescope.previous_alignment),
             #('g','Go to target',                    telescope.go_to_target), 
@@ -290,6 +290,8 @@ class Telescope():
         self.screen.immedok(True)
         self.menu = Menu()                       
         self.status = Status()    
+        self.open_port(tryDefault=True)
+        self.start_server()
         ## Main loop
         while True:
             # Get telescope heartbeat
@@ -429,12 +431,15 @@ class Telescope():
             self.push_message("Server already running.")
     
     #################### Telescope communication functions ######################
-    def open_port(self):
+    def open_port(self,tryDefault=False):
         if os.uname()[0]=="Darwin":
             default_port_name = '/dev/tty.usbserial'
         else:
             default_port_name = '/dev/ttyS0'
-        port_name = self.get_param("Telescope serial port [leave blank for '"+default_port_name+"']")
+        if tryDefault:    
+            port_name = default_port_name
+        else:
+            port_name = self.get_param("Telescope serial port [leave blank for '"+default_port_name+"']")
         try:
             if port_name == '':
                 port_name = default_port_name
@@ -517,6 +522,8 @@ class Telescope():
     def auto_align(self):
         self.set_alignment_side()
 
+        if os.path.isfile("capt0000.jpg"):
+            os.system("rm -f capt0000.jpg")
         if os.path.isfile(".gphoto.success"):
             os.system("rm -f .gphoto.success")
         if os.path.isfile(".gphoto.failed"):
