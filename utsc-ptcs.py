@@ -435,7 +435,10 @@ class Telescope():
         if os.uname()[0]=="Darwin":
             default_port_name = '/dev/tty.usbserial'
         else:
-            default_port_name = '/dev/ttyS0'
+            if socket.gethostname()=="rein007":
+                default_port_name = '/dev/ttyAMA0'
+            else:
+                default_port_name = '/dev/ttyS0'
         if tryDefault:    
             port_name = default_port_name
         else:
