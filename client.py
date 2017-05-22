@@ -153,7 +153,6 @@ class Client(object):
                 args.update({key: val})
             elif default is not None:
                 args.update({key: default})
-        print('Upload args:', args)
         return args
 
     def url_upload(self, url, **kwargs):

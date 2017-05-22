@@ -87,9 +87,9 @@ class Menu():
     def __init__(self):
         self.position = 0                                                    
         self.menuitems = [
-            ('s','Start Stellarium server (CTRL+1 to align/goto)',         telescope.start_server),
+            #('s','Start Stellarium server (CTRL+1 to align/goto)',         telescope.start_server),
             #('O','Open serial port for RoboFocus',  telescope.open_robofocus_port), 
-            ('a','Take image and auto align',       telescope.auto_align),
+            #('a','Take image and auto align',       telescope.auto_align),
             ('e','Manual alignment',                telescope.set_alignment_side), 
             ('t','Toggle Stellarium mode',          telescope.toggle_stellarium_mode),
             ('o','Open serial port for telescope',  telescope.open_port), 
@@ -265,7 +265,9 @@ class Telescope():
         self.last_telescope_update = 0
         self.last_robofocus_update = 0
         self.conn = None
+        self.calibrationconn = None
         self.socket = None
+        self.calibrationsocket = None
         self.serialport = None
         self.robofocus_serialport = None
         self.logfilename = "observations.log"
@@ -391,6 +393,48 @@ class Telescope():
                             self.push_message("Unknown command received of length %d."%len(data))
                     except socket.error as e:
                         pass
+            # Poll calibration socket
+            if self.calibrationsocket is None:
+                self.calibrationsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.calibrationsocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                port = 10002
+                try:
+                    self.calibrationsocket.settimeout(0)
+                    self.calibrationsocket.bind(("127.0.0.1", port))
+                    self.calibrationsocket.listen(1)
+                    self.push_message("Server waiting for connection on port %d."%port)
+                except socket.error as e:
+                    self.push_message("Socket error (%s)"%e.strerror)
+                    self.calibrationsocket = None
+            else:
+                try:
+                    self.calibrationconn, addr = self.calibrationsocket.accept()
+                    try:
+                        self.push_message("Calibration connection established from %s:%d."% addr)
+                        while True:
+                            data = self.calibrationconn.recv(2048)
+                            if data:
+                                direction, ra_string, dec_string = data.split(";")
+                                self.send('!ASas' + direction + ';')
+                                self.stellarium_mode = 0 
+                                if dec_string[-2:]=="60":
+                                    dec_string = dec_string[:-2]+"59"
+                                    self.push_message("Converted 60->59.")
+                                self.send('!CStr' + ra_string + ';')
+                                self.send('!CStd' + dec_string + ';')
+                                self.align_from_target()
+                                self.stellarium_mode=1
+                                self.push_message("Alignment complete.")
+                            else:
+                                break
+                    except Exception as e:
+                        self.push_message(e)
+                    finally: 
+                        self.calibrationconn.close()
+                        self.calibrationsocket = None
+                except Exception as e:
+                    self.push_message(e)
+                    pass
             # Refresh display
             self.menu.display()
             self.status.display()
@@ -418,6 +462,7 @@ class Telescope():
     def start_server(self):
         if self.socket == None:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             port = 10001
             try:
                 self.socket.settimeout(0)
@@ -811,10 +856,18 @@ class Telescope():
             if self.conn is not None:
                 self.conn.close()
                 try:
-                    sddocket.shutdown(socket.SHUT_RD)
+                    self.socket.shutdown(socket.SHUT_RD)
                 except:
                     pass
             self.socket.close()
+        if self.calibrationsocket is not None:
+            if self.calibrationconn is not None:
+                self.calibrationconn.close()
+                try:
+                    self.calibrationsocket.shutdown(socket.SHUT_RD)
+                except:
+                    pass
+            self.calibrationsocket.close()
         if self.serialport is not None:
             if self.serialport.isOpen():
                 self.serialport.close()

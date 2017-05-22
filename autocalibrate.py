@@ -20,24 +20,12 @@
 import os
 import time
 import client
+import socket
 
 with open('apikey.txt', 'r') as content_file:
     apikey = content_file.read().strip()
 
 ## Conversion functions
-def dec_str2raw(s):
-    f = [float(i) for i in s.split(":")]
-    if f[0]<0.:
-        dec = f[0]-f[1]/60.-f[2]/60./60. 
-    else:
-        dec = f[0]+f[1]/60.+f[2]/60./60. 
-    return int(dec*1073741824.0/90.0)
-
-def ra_str2raw(s):
-    f = [float(i) for i in s.split(":")]
-    ra = f[0]+f[1]/60.+f[2]/60./60.
-    return int(ra*2147483648.0/12.0)
-
 def dec_raw2str(raw):
     dec = float(raw)/1073741824.0*90.0
     return "%+02d:%02d:%02d" % (int(dec), int(abs(dec)%1*60), round(abs(dec)%1*60%1*60, 1))
@@ -46,7 +34,7 @@ def ra_raw2str(raw):
     ra = float(raw)/2147483648.0 *12.0
     return  "%02d:%02d:%02d" % (int(ra),  int(ra%1*60),  round(ra%1*60%1*60, 1)) 
 
-debug = True
+debug = False
 
 alignment_side =  None
 if debug:
@@ -107,25 +95,31 @@ try:
         if solved is not None:
             res = client.send_request('jobs/%s' %solved)
             got = res.get("status") 
-            print(got)
             if got == 'solving':
-                print("Now solving..."
+                print("Now solving...")
             elif got == 'success':
                 res = client.send_request('jobs/%s/calibration' %solved)
                 print("\033[92mCalibration successful.\033[0m")
-                print("\033[92mGot: %s %s.\033[0m"% (res["ra"],res["dec"]))
-                if False:
-                    ra_string, dec_string = ra_raw2str(float(res["ra"])/360.*4294967296.), dec_raw2str(float(res["dec"])/90.*1073741824.)
-                    self.push_message("Aligning telescope: %s %s" % (ra_string,dec_string))
-                    self.send('!CStr' + ra_string + ';')
-                    self.send('!CStd' + dec_string + ';')
-                    self.align_from_target()
-                    self.stellarium_mode = 1 
-                    calibrationDone = True
-                else: 
-                    print("Cannot align.")
-                    
+                ra_string, dec_string = ra_raw2str(float(res["ra"])/360.*4294967296.), dec_raw2str(float(res["dec"])/90.*1073741824.)
+                print("Got: %s %s."% (ra_string, dec_string))
+
+                print("Opening connection to telescope control system...")
+
+                try:
+                    send_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    send_socket.connect(("localhost", 10002))
+                except Exception as e:
+                    print(e)
+                    print("\033[91mCannot open connection to telescope control system.\033[0m")
+                    quit(0)
+
+                print("Sending calibration data to telescope control system...")
+                send_socket.send(alignment_side+";"+ra_string+";"+dec_string)
+                time.sleep(1)
+                calibrationDone = True
             else:
+                :w
+                print(got)
                 print("\033[91mCalibration failed.\033[0m")
                 quit(0)
         else:
@@ -133,4 +127,6 @@ try:
 
 
 except KeyboardInterrupt:
+    print("\033[91mKeyboard interrupt.\033[0m")
     quit(0)
+print("\033[92mAll done. Exiting.\033[0m")
