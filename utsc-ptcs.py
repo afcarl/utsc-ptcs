@@ -89,7 +89,6 @@ class Menu():
         self.menuitems = [
             #('s','Start Stellarium server (CTRL+1 to align/goto)',         telescope.start_server),
             #('O','Open serial port for RoboFocus',  telescope.open_robofocus_port), 
-            #('a','Take image and auto align',       telescope.auto_align),
             ('e','Manual alignment',                telescope.set_alignment_side), 
             ('t','Toggle Stellarium mode',          telescope.toggle_stellarium_mode),
             ('o','Open serial port for telescope',  telescope.open_port), 
@@ -438,7 +437,6 @@ class Telescope():
             # Refresh display
             self.menu.display()
             self.status.display()
-            self.auto_align_check()
     
     def push_message(self, message):
         self.status.push_message(message)
@@ -566,79 +564,6 @@ class Telescope():
                                 telescope.camera_shutter = line.split("Current:")[1].strip()
             else:
                 self.push_message("No camera found.")
-
-    def auto_align(self):
-        self.set_alignment_side()
-
-        if os.path.isfile("capt0000.jpg"):
-            os.system("rm -f capt0000.jpg")
-        if os.path.isfile(".gphoto.success"):
-            os.system("rm -f .gphoto.success")
-        if os.path.isfile(".gphoto.failed"):
-            os.system("rm -f .gphoto.failed")
-        telescope.camera_status = 4
-        self.push_message("Taking alignment image.")
-        os.system("gphoto2 --set-config capture=on --set-config iso=3200")
-        os.system("gphoto2 --set-config capture=on --set-config shutterspeed=10")
-        os.system("(gphoto2 --set-config eosremoterelease=Immediate --wait-event=10s --wait-event-and-download=2s --force-overwrite >/dev/null && touch .gphoto.success || touch .gphoto.failed) &")
-    
-    def auto_align_check(self):
-        if os.path.isfile(".gphoto.success"):
-            os.system("rm -f .gphoto.success")
-            telescope.camera_status = 0
-            self.push_message("Image captured. Uploading to astrometry.net ...")
-            self.client = client.Client()
-            self.client.login(apikey)
-            upres = self.client.upload("./capt0000.jpg")
-            self.push_message("Sub id: %s. Waiting for result ..." % upres["subid"])
-            self.subid = upres["subid"]
-        if os.path.isfile(".gphoto.failed"):
-            os.system("rm -f .gphoto.failed")
-            self.push_message("Image capture failed.")
-            self.subid = None
-        if self.subid is not None: 
-            cur = calendar.timegm(time.gmtime())
-            if self.lastcheck is not None:
-                if cur-self.lastcheck>5:
-
-                    res = self.client.send_request('submissions/%s' %self.subid)
-                    jobs = res.get('jobs',[])
-                    solved = None
-                    if len(jobs):
-                        for j in jobs:
-                            if j is not None:
-                                break
-                        if j is not None:
-                            solved = j
-
-                    if solved is not None:
-                        self.push_message("Solved job: %s" % solved)
-                        res = self.client.send_request('jobs/%s' %solved)
-                        if res.get("status") == 'success':
-                            res = self.client.send_request('jobs/%s/calibration' %solved)
-                            self.push_message("Calibration: %s %s"% (res["ra"],res["dec"]))
-                            self.subid = None
-                            self.lastcheck = None
-                            if self.stellarium_mode == 0:
-                                ra_string, dec_string = ra_raw2str(float(res["ra"])/360.*4294967296.), dec_raw2str(float(res["dec"])/90.*1073741824.)
-                                self.push_message("Aligning telescope: %s %s" % (ra_string,dec_string))
-                                self.send('!CStr' + ra_string + ';')
-                                self.send('!CStd' + dec_string + ';')
-                                self.align_from_target()
-                                self.stellarium_mode = 1 
-                            else: 
-                                self.push_message("Cannot align.")
-                                
-                        else:
-                            self.push_message("Calibration failed.")
-                    else:
-                        self.push_message("Not solved yet.")
-
-                    self.lastcheck = cur
-            else:
-                self.lastcheck = cur
-
-
 
 
     def define_iso(self):
