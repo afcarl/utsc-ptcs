@@ -1,12 +1,10 @@
-v4l2-ctl --set-fmt-video=width=480,height=320,pixelformat=5
-v4l2-ctl -c compression_quality=100,sharpness=30
-
-v4l2-ctl -p 10 #frames per second
+v4l2-ctl --set-fmt-video=width=800,height=600,pixelformat=5
+v4l2-ctl -c sharpness=30
 
 cvlc    --no-audio \
         v4l2:///dev/video0 \
-        --v4l2-width 480 \
-        --v4l2-height 320 \
+        --v4l2-width 800 \
+        --v4l2-height 600 \
         --v4l2-chroma MJPG \
         --v4l2-hflip 1 \
         --v4l2-vflip 1 \

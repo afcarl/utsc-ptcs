@@ -31,14 +31,16 @@ from collections import OrderedDict
 import subprocess
 import signal
 import client
+import threading
 from conversions import *
 relaymap = [3,5,7,11,13,15,19]
 try:
     import RPi.GPIO as GPIO; 
     GPIO.setmode(GPIO.BOARD); 
-    for pin in relaymap:
+    for n,pin in enumerate(relaymap):
         GPIO.setup(pin, GPIO.OUT)
-        GPIO.output(pin, 1)
+        if n<4: # only turn off dome, not other equipment
+            GPIO.output(pin, 1)
 except:
     print("cannot access GPIO ports")
 #import Tkinter as tk
@@ -49,12 +51,69 @@ with open('apikey.txt', 'r') as content_file:
 from curses import wrapper
 
 def statusUpdate(k, value):
+    ncurses_lock.acquire()
     for index, key in enumerate(statusitems):      
         if key == k:
             statusitems[key] = value
             statuswin.addstr(1+index, 5+statustitlelen, statusitems[key])           
     statuswin.refresh()
+    ncurses_lock.release()
+    
+telescope_port = None    
+telescope_states= [
+    ['Alignment state',              '!AGas;'],  
+    ['Alignment side',               '!AGai;'],
+    ['Current right ascension',      '!CGra;'],
+    ['Current declination',          '!CGde;'],
+    ['Target right ascension',       '!CGtr;'],
+    ['Target declination',           '!CGtd;']
+]
 
+stop_threads = False
+ncurses_lock = threading.Lock()
+telescope_lock = threading.Lock()
+def telescope_communication():
+    global telescope_port
+    while stop_threads==False:
+        if telescope_port is not None:
+            telescope_lock.acquire()
+            telescope_port.read(1024) # empty buffer
+            for (index,element) in enumerate(telescope_states):
+                ret = "NNN"
+                telescope_port.write(element[1]) 
+                time.sleep(0.05)
+                ret = telescope_port.read(1024).strip() 
+                atcl_asynch = ret.split(chr(0x9F))
+                if len(atcl_asynch)>1:
+                    ret = atcl_asynch[0]
+                if len(ret)>0:
+                    if ret[0] == chr(0x8F):
+                        ret = "ATCL_ACK"
+                    if ret[0] == chr(0xA5):
+                        ret = "ATCL_NACK"
+                    if ret[-1] == ";":
+                        ret = ret[:-1]
+                else:
+                    ret = "N/A"
+                
+                
+                if "Internal error" in ret:
+                    print(ret)
+                    ret = "N/A"
+                statusUpdate(element[0], ret)
+            telescope_lock.release()
+        time.sleep(3)
+
+    return
+telescope_thread = threading.Thread(target=telescope_communication)
+telescope_thread.start()
+
+def finish():
+    global stop_threads
+    stop_threads = True
+    print("Finishing...")
+    exit(1)
+    return
 
 def main(stdscr):
     stdscr.clear()
@@ -72,7 +131,7 @@ def main(stdscr):
         ('e','Manual alignment',                exit), #set_alignment_side), 
         ('t','Toggle Stellarium mode',          exit), #toggle_stellarium_mode),
         ('d','Dome control',                    exit), #dome), 
-        ('q','Exit',                            exit)
+        ('q','Exit',                            finish)
         ]
     menuwin = curses.newwin(len(menuitems)+2,curses.COLS-3,4,2)                                  
     menuwin.border(0)
@@ -90,6 +149,8 @@ def main(stdscr):
             ('Stellarium', ''), 
             ('Dome', ''), 
     ])
+    for k,c in telescope_states:
+        statusitems[k] = ''
     global statuswin
     statuswin = curses.newwin(len(statusitems)+2,curses.COLS-3,menuwin.getbegyx()[0]+menuwin.getmaxyx()[0],2)     
     statuswin.border(0)
@@ -102,14 +163,14 @@ def main(stdscr):
    
 
     # Open Telescope Port
+    global telescope_port
     if os.uname()[0]=="Darwin":
         port_name = '/dev/tty.usbserial'
-    elif socket.gethostname()=="rein009":
-        port_name = '/dev/ttyAMA0'
+        #port_name = '/dev/ttyAMA0'
     else:
         port_name = '/dev/ttyS0'
     try:
-        telescopeport = serial.Serial(port_name, 19200, timeout = 0.01) 
+        telescope_port = serial.Serial(port_name, 19200, timeout = 0.01) 
         statusUpdate('Telescope', "Opened "+port_name)                    
     except:
         statusUpdate('Telescope', "Unable to open port at "+port_name)                    
@@ -146,6 +207,21 @@ def main(stdscr):
             GPIO.output(relaymap[3], 0)
             statusUpdate('Dome', "vvv")                    
             lastkey = datetime.datetime.now()
+        elif c == ord('1'):
+            current = GPIO.input(relaymap[4])
+            GPIO.output(relaymap[4], not current)
+            statusUpdate('Dome', "1--")                    
+            lastkey = datetime.datetime.now()
+        elif c == ord('2'):
+            current = GPIO.input(relaymap[5])
+            GPIO.output(relaymap[5], not current)
+            statusUpdate('Dome', "2--")                    
+            lastkey = datetime.datetime.now()
+        elif c == ord('3'):
+            current = GPIO.input(relaymap[6])
+            GPIO.output(relaymap[6], not current)
+            statusUpdate('Dome', "3--")                    
+            lastkey = datetime.datetime.now()
         elif c==-1:
             # No user interaction. 
             statusUpdate('Time', time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()))                    
@@ -161,7 +237,7 @@ def main(stdscr):
     
 
 wrapper(main)
-
+finish()
 exit(0)
 
 
