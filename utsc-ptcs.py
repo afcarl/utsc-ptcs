@@ -36,6 +36,7 @@ from conversions import *
 relaymap = [3,5,7,11,13,15,19]
 try:
     import RPi.GPIO as GPIO; 
+    GPIO.setwarnings(False)
     GPIO.setmode(GPIO.BOARD); 
     for n,pin in enumerate(relaymap):
         GPIO.setup(pin, GPIO.OUT)
@@ -55,6 +56,8 @@ def statusUpdate(k, value):
     for index, key in enumerate(statusitems):      
         if key == k:
             statusitems[key] = value
+            statuswin.move(1+index, 5+statustitlelen);   
+            statuswin.clrtoeol(); 
             statuswin.addstr(1+index, 5+statustitlelen, statusitems[key])           
     statuswin.refresh()
     ncurses_lock.release()
@@ -79,8 +82,9 @@ def telescope_communication():
             telescope_lock.acquire()
             telescope_port.read(1024) # empty buffer
             for (index,element) in enumerate(telescope_states):
+                key, command = element
                 ret = "NNN"
-                telescope_port.write(element[1]) 
+                telescope_port.write(command) 
                 time.sleep(0.05)
                 ret = telescope_port.read(1024).strip() 
                 atcl_asynch = ret.split(chr(0x9F))
@@ -93,6 +97,18 @@ def telescope_communication():
                         ret = "ATCL_NACK"
                     if ret[-1] == ";":
                         ret = ret[:-1]
+                        # Send data to stellarium
+                        if stellarium_socket is not None:
+                            if stellarium_conn is not None:
+                                try:
+                                    if command == '!CGra;':
+                                        ra = ra_str2raw(value)
+                                    if command == '!CGde;':
+                                        dec = dec_str2raw(value)
+                                    data = struct.pack('<hhQIii',24,0,int(round(time.time() * 1000)), ra, dec, 0)
+                                    stellarium_conn.send(data)
+                                except:
+                                    pass
                 else:
                     ret = "N/A"
                 
@@ -100,18 +116,81 @@ def telescope_communication():
                 if "Internal error" in ret:
                     print(ret)
                     ret = "N/A"
-                statusUpdate(element[0], ret)
+                statusUpdate(key, ret)
             telescope_lock.release()
         time.sleep(3)
 
     return
-telescope_thread = threading.Thread(target=telescope_communication)
-telescope_thread.start()
+
+
+stellarium_socket = None
+stellarium_conn = None
+def stellarium_communication():
+    global stellarium_socket
+    global stellarium_conn
+    while stop_threads==False:
+        # Poll socket for Stellarium
+        if stellarium_socket is not None:
+            if stellarium_conn is None:
+                try:
+                    stellarium_conn, addr = stellarium_socket.accept()
+                    stellarium_conn.settimeout(0)
+                    #socket.setblocking(0)
+                    statusUpdate("Stellarium", "Connection established from %s:%d."% addr)
+                except socket.error as e:
+                    pass
+            else:
+                try:
+                    time.sleep(0.01)
+                    data = stellarium_conn.recv(1024)
+                    if len(data)==20:   # goto command
+                        data = struct.unpack('<hhQIi',data)
+                        ra_string, dec_string = ra_raw2str(data[-2]), dec_raw2str(data[-1])
+                        statusUpdate("Stellarium", "Received from stellarium: %s %s" % (ra_string,dec_string))
+                        if dec_string[-2:]=="60":
+                            dec_string = dec_string[:-2]+"59"
+                            self.push_message("Converted 60->59.")
+                        self.send('!CStr' + ra_string + ';')
+                        self.send('!CStd' + dec_string + ';')
+                        if self.stellarium_mode==0:
+                            self.align_from_target()
+                            self.stellarium_mode=1
+                        else: 
+                            self.go_to_target()
+                    elif len(data)==0:
+                        pass
+                    else:
+                        statusUpdate("Stellarium","Unknown command received of length %d."%len(data))
+                except socket.error as e:
+                    pass
+        else:
+            stellarium_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            stellarium_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            port = 10001
+            try:
+                stellarium_socket.settimeout(0)
+                stellarium_socket.bind(("127.0.0.1", port))
+                stellarium_socket.listen(1)
+                statusUpdate("Stellarium", "Server waiting for connection on port %d."%port)
+            except socket.error as e:
+                statusUpdate("Stellarium", "Socket error (%s)"%e.strerror)
+                stellarium_socket = None
+                time.sleep(5)
+        time.sleep(0.1)
+
 
 def finish():
+    print("Finishing...")
     global stop_threads
     stop_threads = True
-    print("Finishing...")
+    if stellarium_socket is not None:
+        if stellarium_conn is not None:
+            stellarium_conn.close()
+            try:
+                stellarium_socket.shutdown(socket.SHUT_RD)
+            except:
+                pass
+        stellarium_socket.close()
     exit(1)
     return
 
@@ -176,6 +255,10 @@ def main(stdscr):
         statusUpdate('Telescope', "Unable to open port at "+port_name)                    
 
 
+    telescope_thread = threading.Thread(target=telescope_communication)
+    telescope_thread.start()
+    stellarium_thread = threading.Thread(target=stellarium_communication)
+    stellarium_thread.start()
 
     lastkey = None
     while True:
