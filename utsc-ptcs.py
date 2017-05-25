@@ -25,15 +25,12 @@ import socket
 import struct
 import time
 import datetime
-import calendar
 import sys
-from collections import OrderedDict
-import subprocess
 import signal
 import client
 import threading
 from conversions import *
-relaymap = [3,5,7,11,13,15,19]
+relaymap = [5,3,7,11,13,15,19]
 try:
     import RPi.GPIO as GPIO; 
     GPIO.setwarnings(False)
@@ -44,22 +41,79 @@ try:
             GPIO.output(pin, 1)
 except:
     print("cannot access GPIO ports")
-#import Tkinter as tk
 
 with open('apikey.txt', 'r') as content_file:
     apikey = content_file.read().strip()
 
 from curses import wrapper
 
+def updateDomeStatus():
+    dome = "---"
+    if not GPIO.input(relaymap[0]):
+        dome = "<<<"
+    elif not GPIO.input(relaymap[1]):
+        dome = ">>>"
+    elif not GPIO.input(relaymap[2]):
+        dome = "^^^"
+    elif not GPIO.input(relaymap[3]):
+        dome = "vvv"
+
+    dome = "Movement ("+dome+")  "
+
+    if not GPIO.input(relaymap[4]):
+        dome += " Light (on)   "
+    else:
+        dome += " Light (off)  "
+    if not GPIO.input(relaymap[5]):
+        dome += " Telescope (on)   "
+    else:
+        dome += " Telescope (off)  "
+    if not GPIO.input(relaymap[6]):
+        dome += " Camera (on)   "
+    else:
+        dome += " Camera (off)  "
+    statusUpdate("Dome",dome)
+
 def statusUpdate(k, value):
     ncurses_lock.acquire()
     for index, key in enumerate(statusitems):      
         if key == k:
-            statusitems[key] = value
             statuswin.move(1+index, 5+statustitlelen);   
             statuswin.clrtoeol(); 
-            statuswin.addstr(1+index, 5+statustitlelen, statusitems[key])           
+            statuswin.addstr(1+index, 5+statustitlelen, value.replace('\n', ' '))           
+    statuswin.border(0)
+    statuswin.addstr(0, 1, " Status ")                    
     statuswin.refresh()
+    ncurses_lock.release()
+
+messagesN = 5
+messagesi = 1
+messages = []
+messageswin = None
+def showMessage(value):
+    global messagesi
+    atcl_asynch = value.split(chr(0x9F))
+    if len(atcl_asynch)>1:
+        for a in atcl_asynch:
+            if len(a)>0:
+                showMessage(a.replace('\n',' '))
+        return
+    else:
+        value = atcl_asynch[0]
+    if len(value)>2:
+        if value[0:2]=="O7":
+            return
+    global messageswin
+    ncurses_lock.acquire()
+    if len(messages) >= messagesN:
+        messages.pop(0)
+        messagesi +=1 
+    messages.append(value)
+    for index, key in enumerate(messages):      
+        messageswin.move(1+index, 2);   
+        messageswin.clrtoeol(); 
+        messageswin.addstr(1+index, 2, "%4d : %s" % (messagesi+index,key))           
+    messageswin.refresh()
     ncurses_lock.release()
     
 telescope_port = None    
@@ -79,8 +133,11 @@ def telescope_communication():
     global telescope_port
     while stop_threads==False:
         if telescope_port is not None:
+            ra, dec = None, None
             telescope_lock.acquire()
-            telescope_port.read(1024) # empty buffer
+            data = telescope_port.read(2048) # empty buffer
+            if len(data)>0:
+                showMessage(data)
             for (index,element) in enumerate(telescope_states):
                 key, command = element
                 ret = "NNN"
@@ -93,22 +150,18 @@ def telescope_communication():
                 if len(ret)>0:
                     if ret[0] == chr(0x8F):
                         ret = "ATCL_ACK"
-                    if ret[0] == chr(0xA5):
+                    elif ret[0] == chr(0xA5):
                         ret = "ATCL_NACK"
-                    if ret[-1] == ";":
-                        ret = ret[:-1]
-                        # Send data to stellarium
-                        if stellarium_socket is not None:
-                            if stellarium_conn is not None:
-                                try:
-                                    if command == '!CGra;':
-                                        ra = ra_str2raw(value)
-                                    if command == '!CGde;':
-                                        dec = dec_str2raw(value)
-                                    data = struct.pack('<hhQIii',24,0,int(round(time.time() * 1000)), ra, dec, 0)
-                                    stellarium_conn.send(data)
-                                except:
-                                    pass
+                    else:
+                        if ret[-1] == ";":
+                            ret = ret[:-1]
+                        try:
+                            if command == '!CGra;':
+                                ra = ra_str2raw(ret)
+                            if command == '!CGde;':
+                                dec = dec_str2raw(ret)
+                        except:
+                            ra, dec = None, None
                 else:
                     ret = "N/A"
                 
@@ -118,16 +171,23 @@ def telescope_communication():
                     ret = "N/A"
                 statusUpdate(key, ret)
             telescope_lock.release()
+            if ra is not None and dec is not None:
+                if stellarium_socket is not None:
+                    if stellarium_conn is not None:
+                        data = struct.pack('<hhQIii',24,0,int(round(time.time() * 1000)), ra, dec, 0)
+                        stellarium_conn.send(data)
         time.sleep(3)
 
     return
 
 
+alignment_mode = "goto"
 stellarium_socket = None
 stellarium_conn = None
 def stellarium_communication():
     global stellarium_socket
     global stellarium_conn
+    global alignment_mode
     while stop_threads==False:
         # Poll socket for Stellarium
         if stellarium_socket is not None:
@@ -140,29 +200,39 @@ def stellarium_communication():
                 except socket.error as e:
                     pass
             else:
+                time.sleep(0.01)
+                data = ""
                 try:
-                    time.sleep(0.01)
                     data = stellarium_conn.recv(1024)
-                    if len(data)==20:   # goto command
-                        data = struct.unpack('<hhQIi',data)
-                        ra_string, dec_string = ra_raw2str(data[-2]), dec_raw2str(data[-1])
-                        statusUpdate("Stellarium", "Received from stellarium: %s %s" % (ra_string,dec_string))
-                        if dec_string[-2:]=="60":
-                            dec_string = dec_string[:-2]+"59"
-                            self.push_message("Converted 60->59.")
-                        self.send('!CStr' + ra_string + ';')
-                        self.send('!CStd' + dec_string + ';')
-                        if self.stellarium_mode==0:
-                            self.align_from_target()
-                            self.stellarium_mode=1
-                        else: 
-                            self.go_to_target()
-                    elif len(data)==0:
-                        pass
-                    else:
-                        statusUpdate("Stellarium","Unknown command received of length %d."%len(data))
-                except socket.error as e:
+                except:
                     pass
+                if len(data)==20:   # goto command
+                    data = struct.unpack('<hhQIi',data)
+                    ra_string, dec_string = ra_raw2str(data[-2]), dec_raw2str(data[-1])
+                    statusUpdate("Stellarium", "Received from stellarium: %s %s" % (ra_string,dec_string))
+                    if dec_string[-2:]=="60":
+                        dec_string = dec_string[:-2]+"59"
+                    telescope_lock.acquire()
+                    time.sleep(0.01)
+                    telescope_port.write('!CStr' + ra_string + ';')
+                    time.sleep(0.01)
+                    telescope_port.write('!CStd' + dec_string + ';')
+                    time.sleep(0.01)
+                    if alignment_mode=="align":
+                        telescope_port.write('!AFrn;')
+                        alignment_mode = "goto"
+                        statusUpdate("Alignment mode", "GoTo next coordinates.")
+                    elif alignment_mode=="goto": 
+                        telescope_port.write('!GTrd;')
+                    time.sleep(0.1)
+                    data = telescope_port.read(1024) # empty buffer
+                    if len(data)>0:
+                        showMessage(data)
+                    telescope_lock.release()
+                elif len(data)==0:
+                    pass
+                else:
+                    statusUpdate("Stellarium","Unknown command received of length %d."%len(data))
         else:
             stellarium_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             stellarium_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -193,6 +263,23 @@ def finish():
         stellarium_socket.close()
     exit(1)
     return
+    
+def start_manual_alignment_e():
+    statusUpdate("Alignment mode", "Align to next coordinates (East)")
+    global alignment_mode
+    alignment_mode = "align"
+    telescope_lock.acquire()
+    telescope_port.write('!ASasEast;')
+    telescope_lock.release()
+def start_manual_alignment_w():
+    statusUpdate("Alignment mode", "Align to next coordinates (West)")
+    global alignment_mode
+    alignment_mode = "align"
+    telescope_lock.acquire()
+    telescope_port.write('!ASasWest;')
+    telescope_lock.release()
+
+menuwin = None
 
 def main(stdscr):
     stdscr.clear()
@@ -207,29 +294,29 @@ def main(stdscr):
     stdscr.refresh()
 
     menuitems = [
-        ('e','Manual alignment',                exit), #set_alignment_side), 
-        ('t','Toggle Stellarium mode',          exit), #toggle_stellarium_mode),
-        ('d','Dome control',                    exit), #dome), 
-        ('q','Exit',                            finish)
-        ]
+            "e/w/g              - Toggle between manual align (East/West) and GoTo",
+            "Left/Right/Up/Down - Control dome",
+            "1/2/3              - Control peripherals (light/telescope/camera) ",
+            "q                  - Exit",
+            ]
+    global menuwin
     menuwin = curses.newwin(len(menuitems)+2,curses.COLS-3,4,2)                                  
     menuwin.border(0)
     menuwin.addstr(0, 1, " Menu ")                    
     for index, item in enumerate(menuitems):                        
-        msg = ' %s - %s ' % (item[0],item[1])                            
-        menuwin.addstr(1+index, 1, msg)                    
+        msg = '%s' % (item)                            
+        menuwin.addstr(1+index, 2, msg)                    
     menuwin.refresh()
 
    
     global statusitems
-    statusitems = OrderedDict([
-            ('Time', ''),
-            ('Telescope', ''), 
-            ('Stellarium', ''), 
-            ('Dome', ''), 
-    ])
-    for k,c in telescope_states:
-        statusitems[k] = ''
+    statusitems = [
+            'Time',
+            'Telescope', 
+            'Stellarium', 
+            'Alignment mode', 
+            'Dome', 
+    ] + [k for k,c in telescope_states]
     global statuswin
     statuswin = curses.newwin(len(statusitems)+2,curses.COLS-3,menuwin.getbegyx()[0]+menuwin.getmaxyx()[0],2)     
     statuswin.border(0)
@@ -238,8 +325,14 @@ def main(stdscr):
     statustitlelen = max([len(k) for k in statusitems])
     for index, key in enumerate(statusitems):      
         statuswin.addstr(1+index, 2, ("%%-%ds: "%(statustitlelen+1)) % key)           
-    statusUpdate('Dome', "---")                    
+    updateDomeStatus()                    
+    statusUpdate("Alignment mode", "GoTo next coordinates.")
    
+    global messageswin
+    messageswin = curses.newwin(messagesN+2,curses.COLS-3,statuswin.getbegyx()[0]+statuswin.getmaxyx()[0],2)     
+    messageswin.border(0)
+    messageswin.addstr(0, 1, " Telescope messages ")                    
+    messageswin.refresh()
 
     # Open Telescope Port
     global telescope_port
@@ -265,58 +358,57 @@ def main(stdscr):
         c = stdscr.getch()
         if lastkey is not None:
             td = datetime.datetime.now() - lastkey
-            if td.microseconds > 500000 or td.seconds > 0:
+            if td.microseconds > 400000 or td.seconds > 0:
                 GPIO.output(relaymap[0], 1)
                 GPIO.output(relaymap[1], 1)
                 GPIO.output(relaymap[2], 1)
                 GPIO.output(relaymap[3], 1)
-                statusUpdate('Dome', "---")                    
+                updateDomeStatus()                    
                 lastkey = None
 
 
         if c == curses.KEY_LEFT:
             GPIO.output(relaymap[0], 0)
-            statusUpdate('Dome', "<<-")                    
+            updateDomeStatus()                    
             lastkey = datetime.datetime.now()
         elif c == curses.KEY_RIGHT:
             GPIO.output(relaymap[1], 0)
-            statusUpdate('Dome', "->>")                    
+            updateDomeStatus()                    
             lastkey = datetime.datetime.now()
         elif c == curses.KEY_UP:
             GPIO.output(relaymap[2], 0)
-            statusUpdate('Dome', "^^^")                    
+            updateDomeStatus()                    
             lastkey = datetime.datetime.now()
         elif c == curses.KEY_DOWN:
             GPIO.output(relaymap[3], 0)
-            statusUpdate('Dome', "vvv")                    
+            updateDomeStatus()                    
             lastkey = datetime.datetime.now()
         elif c == ord('1'):
             current = GPIO.input(relaymap[4])
             GPIO.output(relaymap[4], not current)
-            statusUpdate('Dome', "1--")                    
-            lastkey = datetime.datetime.now()
+            updateDomeStatus()                    
         elif c == ord('2'):
             current = GPIO.input(relaymap[5])
             GPIO.output(relaymap[5], not current)
-            statusUpdate('Dome', "2--")                    
-            lastkey = datetime.datetime.now()
+            updateDomeStatus()                    
         elif c == ord('3'):
             current = GPIO.input(relaymap[6])
             GPIO.output(relaymap[6], not current)
-            statusUpdate('Dome', "3--")                    
-            lastkey = datetime.datetime.now()
+            updateDomeStatus()                    
         elif c==-1:
             # No user interaction. 
             statusUpdate('Time', time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()))                    
             # Wait for next update
-            time.sleep(0.1)
-        else:
-            # Menu press
-            keypressed = unichr(c)
-            for k,t,f in menuitems:
-                if keypressed == k:
-                    f()
-
+            time.sleep(0.05)
+        elif c == ord('q'):
+            finish()
+        elif c == ord('e'):
+            start_manual_alignment_e()
+        elif c == ord('w'):
+            start_manual_alignment_w()
+        elif c == ord('g'):
+            alignment_mode = "goto"
+            statusUpdate("Alignment mode", "GoTo next coordinates.")
     
 
 wrapper(main)
