@@ -24,8 +24,10 @@ import curses
 import socket
 import struct
 import time
+import datetime
 import calendar
 import sys
+from collections import OrderedDict
 import subprocess
 import signal
 import client
@@ -45,6 +47,14 @@ with open('apikey.txt', 'r') as content_file:
     apikey = content_file.read().strip()
 
 from curses import wrapper
+
+def statusUpdate(k, value):
+    for index, key in enumerate(statusitems):      
+        if key == k:
+            statusitems[key] = value
+            statuswin.addstr(1+index, 5+statustitlelen, statusitems[key])           
+    statuswin.refresh()
+
 
 def main(stdscr):
     stdscr.clear()
@@ -73,31 +83,80 @@ def main(stdscr):
     menuwin.refresh()
 
    
-    statusitems = {
-            'Time (UTC)': 'dd', 
-            'Telescope': '', 
-            'Stellarium': '', 
-    }
+    global statusitems
+    statusitems = OrderedDict([
+            ('Time', ''),
+            ('Telescope', ''), 
+            ('Stellarium', ''), 
+            ('Dome', ''), 
+    ])
+    global statuswin
     statuswin = curses.newwin(len(statusitems)+2,curses.COLS-3,menuwin.getbegyx()[0]+menuwin.getmaxyx()[0],2)     
     statuswin.border(0)
     statuswin.addstr(0, 1, " Status ")                    
+    global statustitlelen
     statustitlelen = max([len(k) for k in statusitems])
     for index, key in enumerate(statusitems):      
         statuswin.addstr(1+index, 2, ("%%-%ds: "%(statustitlelen+1)) % key)           
-    for index, key in enumerate(statusitems):      
-        statuswin.addstr(1+index, 5+statustitlelen, statusitems[key])           
-    statuswin.refresh()
+    statusUpdate('Dome', "---")                    
+   
+
+    # Open Telescope Port
+    if os.uname()[0]=="Darwin":
+        port_name = '/dev/tty.usbserial'
+    elif socket.gethostname()=="rein009":
+        port_name = '/dev/ttyAMA0'
+    else:
+        port_name = '/dev/ttyS0'
+    try:
+        telescopeport = serial.Serial(port_name, 19200, timeout = 0.01) 
+        statusUpdate('Telescope', "Opened "+port_name)                    
+    except:
+        statusUpdate('Telescope', "Unable to open port at "+port_name)                    
 
 
 
-    k = None
-    while k != 'q':
+    lastkey = None
+    while True:
         c = stdscr.getch()
-        if c==-1:
-            k = None
+        if lastkey is not None:
+            td = datetime.datetime.now() - lastkey
+            if td.microseconds > 500000 or td.seconds > 0:
+                GPIO.output(relaymap[0], 1)
+                GPIO.output(relaymap[1], 1)
+                GPIO.output(relaymap[2], 1)
+                GPIO.output(relaymap[3], 1)
+                statusUpdate('Dome', "---")                    
+                lastkey = None
+
+
+        if c == curses.KEY_LEFT:
+            GPIO.output(relaymap[0], 0)
+            statusUpdate('Dome', "<<-")                    
+            lastkey = datetime.datetime.now()
+        elif c == curses.KEY_RIGHT:
+            GPIO.output(relaymap[1], 0)
+            statusUpdate('Dome', "->>")                    
+            lastkey = datetime.datetime.now()
+        elif c == curses.KEY_UP:
+            GPIO.output(relaymap[2], 0)
+            statusUpdate('Dome', "^^^")                    
+            lastkey = datetime.datetime.now()
+        elif c == curses.KEY_DOWN:
+            GPIO.output(relaymap[3], 0)
+            statusUpdate('Dome', "vvv")                    
+            lastkey = datetime.datetime.now()
+        elif c==-1:
+            # No user interaction. 
+            statusUpdate('Time', time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()))                    
+            # Wait for next update
             time.sleep(0.1)
         else:
-            k = unichr(c)
+            # Menu press
+            keypressed = unichr(c)
+            for k,t,f in menuitems:
+                if keypressed == k:
+                    f()
 
     
 
