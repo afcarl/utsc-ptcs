@@ -29,58 +29,81 @@ import sys
 import subprocess
 import signal
 import client
+from conversions import *
+relaymap = [3,5,7,11,13,15,19]
+try:
+    import RPi.GPIO as GPIO; 
+    GPIO.setmode(GPIO.BOARD); 
+    for pin in relaymap:
+        GPIO.setup(pin, GPIO.OUT)
+        GPIO.output(pin, 1)
+except:
+    print("cannot access GPIO ports")
 #import Tkinter as tk
 
 with open('apikey.txt', 'r') as content_file:
     apikey = content_file.read().strip()
-#subid ="1544394"
-#client = client.Client()
-#client.login(apikey)
-##upres = client.upload("./capt0000.jpg")
-##print(upres)
-##exit()
-##subid = upres["subid"]
-##print(subid)
-##
-##
-#subid = "1544449"
-#res = client.send_request('submissions/%s' %subid)
-#jobs = res.get('jobs',[])
-#if len(jobs):
-#    for j in jobs:
-#        if j is not None:
-#            break
-#    if j is not None:
-#        solved = j
-#
-#print(solved)
-#res = client.send_request('jobs/%s' %solved)
-#if res.get("status") == 'success':
-#    res = client.send_request('jobs/%s/calibration' %solved)
-#    print(res)
-#exit()
 
-## Conversion functions
-def dec_str2raw(s):
-    f = [float(i) for i in s.split(":")]
-    if f[0]<0.:
-        dec = f[0]-f[1]/60.-f[2]/60./60. 
-    else:
-        dec = f[0]+f[1]/60.+f[2]/60./60. 
-    return int(dec*1073741824.0/90.0)
+from curses import wrapper
 
-def ra_str2raw(s):
-    f = [float(i) for i in s.split(":")]
-    ra = f[0]+f[1]/60.+f[2]/60./60.
-    return int(ra*2147483648.0/12.0)
+def main(stdscr):
+    stdscr.clear()
+    stdscr = curses.initscr()
+    curses.noecho()
+    curses.cbreak()
+    stdscr.nodelay(True)
+    stdscr.keypad(True)
 
-def dec_raw2str(raw):
-    dec = float(raw)/1073741824.0*90.0
-    return "%+02d:%02d:%02d" % (int(dec), int(abs(dec)%1*60), round(abs(dec)%1*60%1*60, 1))
+    stdscr.addstr(1, 2, "UTSC | PTCS", curses.A_BOLD)
+    stdscr.addstr(2, 2, "University of Toronto Scarborough | Python Telescope Control System", curses.A_BOLD)
+    stdscr.refresh()
 
-def ra_raw2str(raw):
-    ra = float(raw)/2147483648.0 *12.0
-    return  "%02d:%02d:%02d" % (int(ra),  int(ra%1*60),  round(ra%1*60%1*60, 1)) 
+    menuitems = [
+        ('e','Manual alignment',                exit), #set_alignment_side), 
+        ('t','Toggle Stellarium mode',          exit), #toggle_stellarium_mode),
+        ('d','Dome control',                    exit), #dome), 
+        ('q','Exit',                            exit)
+        ]
+    menuwin = curses.newwin(len(menuitems)+2,curses.COLS-3,4,2)                                  
+    menuwin.border(0)
+    menuwin.addstr(0, 1, " Menu ")                    
+    for index, item in enumerate(menuitems):                        
+        msg = ' %s - %s ' % (item[0],item[1])                            
+        menuwin.addstr(1+index, 1, msg)                    
+    menuwin.refresh()
+
+   
+    statusitems = {
+            'Time (UTC)': 'dd', 
+            'Telescope': '', 
+            'Stellarium': '', 
+    }
+    statuswin = curses.newwin(len(statusitems)+2,curses.COLS-3,menuwin.getbegyx()[0]+menuwin.getmaxyx()[0],2)     
+    statuswin.border(0)
+    statuswin.addstr(0, 1, " Status ")                    
+    statustitlelen = max([len(k) for k in statusitems])
+    for index, key in enumerate(statusitems):      
+        statuswin.addstr(1+index, 2, ("%%-%ds: "%(statustitlelen+1)) % key)           
+    for index, key in enumerate(statusitems):      
+        statuswin.addstr(1+index, 5+statustitlelen, statusitems[key])           
+    statuswin.refresh()
+
+
+
+    k = None
+    while k != 'q':
+        c = stdscr.getch()
+        if c==-1:
+            k = None
+            time.sleep(0.1)
+        else:
+            k = unichr(c)
+
+    
+
+wrapper(main)
+
+exit(0)
 
 
 class Menu():                                                          
@@ -91,7 +114,8 @@ class Menu():
             #('O','Open serial port for RoboFocus',  telescope.open_robofocus_port), 
             ('e','Manual alignment',                telescope.set_alignment_side), 
             ('t','Toggle Stellarium mode',          telescope.toggle_stellarium_mode),
-            ('o','Open serial port for telescope',  telescope.open_port), 
+            #('o','Open serial port for telescope',  telescope.open_port), 
+            ('d','Dome control',                    telescope.dome), 
             #('a','Align from target',               telescope.align_from_target), 
             # ('v','Void alignment',                  telescope.void_alignment),
             # ('p','Write telescope readout to file', telescope.write_telescope_readout),
@@ -456,6 +480,12 @@ class Telescope():
     #################### Stellarium communication functions ######################
     def toggle_stellarium_mode(self):
         self.stellarium_mode = not self.stellarium_mode
+    
+    def dome(self):
+        i = 6
+        GPIO.output(relaymap[i], 0)
+        time.sleep(1.4)
+        GPIO.output(relaymap[i], 1)
 
     def start_server(self):
         if self.socket == None:
