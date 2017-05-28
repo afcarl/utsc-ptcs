@@ -34,10 +34,7 @@ def ra_raw2str(raw):
     ra = float(raw)/2147483648.0 *12.0
     return  "%02d:%02d:%02d" % (int(ra),  int(ra%1*60),  round(ra%1*60%1*60, 1)) 
 
-debug = False
-
 alignment_side =  None
-if debug:
     alignment_side = "e"
 
 while alignment_side is not "e" and alignment_side is not "w":
@@ -53,7 +50,7 @@ elif alignment_side == "w":
     alignment_side = "West"
 
 
-if os.path.isfile("capt0000.jpg") and debug==False:
+if os.path.isfile("capt0000.jpg"):
     print("Deleting old image file...")
     os.system("rm -f capt0000.jpg")
 print("Configuring camera...")
@@ -67,9 +64,7 @@ print("Taking a 10 second exposure...")
 r = os.system("gphoto2 --set-config eosremoterelease=Immediate --wait-event=10s --wait-event-and-download=2s --force-overwrite >/dev/null")
 if r!=0:
     print("\033[91mProblem encountered trying to take image. Make sure camera is connected and not in use.\033[0m")
-    if debug==False:
-        print("\033[91mExiting.\033[0m")
-        quit(0)
+    quit(0)
     
 print("\033[92mImage captured. Uploading to astrometry.net...\033[0m")
 client = client.Client()

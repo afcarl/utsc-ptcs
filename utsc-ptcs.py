@@ -109,7 +109,7 @@ def showMessage(value):
         messages.pop(0)
         messagesi +=1 
     messages.append(value)
-    for index, key in enumerate(messages):      
+    for index, key in enumerate(reversed(messages)):      
         messageswin.move(1+index, 2);   
         messageswin.clrtoeol(); 
         messageswin.addstr(1+index, 2, "%4d : %s" % (messagesi+index,key))           
@@ -228,6 +228,7 @@ def stellarium_communication():
                             showMessage(data)
                         telescope_lock.release()
                     elif len(data)==0:
+                        # Disconnected
                         statusUpdate("Stellarium","Disconnected. Waiting for new connection.")
                         stellarium_conn = None
                         pass
@@ -273,10 +274,15 @@ def autoalignment_communication():
                 data = ""
                 try:
                     data = autoalignment_conn.recv(2048)
-                    if data:
+                    if len(data)==0:
+                        #Disconnected
+                        statusUpdate("Auto alignment","Disconnected. Waiting for new connection.")
+                        autoalignment_conn = None
+                    else:
                         telescope_lock.acquire()
                         time.sleep(0.01)
                         direction, ra_string, dec_string = data.split(";")
+                        showMessage("Auto alignment coordinates received: (%s) %s %s" %(direction, ra_string, dec_string))
                         telescope_port.write('!ASas' + direction + ';')
                         time.sleep(0.01)
                         if dec_string[-2:]=="60":
@@ -286,16 +292,10 @@ def autoalignment_communication():
                         telescope_port.write('!CStd' + dec_string + ';')
                         time.sleep(0.01)
                         telescope_port.write('!AFrn;')
-                        showMessage("Auto alignment complete.")
                         telescope_lock.release()
-                    else:
-                        break
-                except Exception as e:
-                    showMessage("Auto alignment: Error: %s"% e)
-                finally: 
-                    showMessage("Auto alignment: Closing connection.")
-                    autoalignment_conn.close()
-                    autoalignment_conn = None
+                except socket.error as e:
+                    # No data received
+                    pass
         else:
             autoalignment_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             autoalignment_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -403,7 +403,7 @@ def main(stdscr):
     global messageswin
     messageswin = curses.newwin(messagesN+2,curses.COLS-3,statuswin.getbegyx()[0]+statuswin.getmaxyx()[0],2)     
     messageswin.border(0)
-    messageswin.addstr(0, 1, " Telescope messages ")                    
+    messageswin.addstr(0, 1, " Log ")                    
     messageswin.refresh()
 
     # Open Telescope Port
@@ -599,13 +599,6 @@ class Status():
                 serverstatus = "Waiting for connection" 
         self.window_status.addstr(i, 20, serverstatus )                    
         i += 1
-        self.window_status.addstr(i, 2, "Stellarium mode")                    
-        if telescope.stellarium_mode==0:
-            stellarium_mode = "Align to next coordinates"
-        else:
-            stellarium_mode = "Go to next coordinates"
-        self.window_status.addstr(i, 20, stellarium_mode )                    
-        i += 1
          
         #self.window_status.addstr(i, 2, "Camera")                    
         #self.window_status.addstr(i, 19, telescope.camera)                    
@@ -745,19 +738,6 @@ class Telescope():
                 else:
                     for (index,element) in enumerate(self.telescope_states):
                         element[2] = "N/A"
-                # Send data to stellarium
-                if self.socket is not None:
-                    if self.conn is not None:
-                        try:
-                            for (desc, command, value) in self.telescope_states:
-                                if command == '!CGra;':
-                                    ra = ra_str2raw(value)
-                                if command == '!CGde;':
-                                    dec = dec_str2raw(value)
-                            data = struct.pack('<hhQIii',24,0,int(round(time.time() * 1000)), ra, dec, 0)
-                            telescope.conn.send(data)
-                        except:
-                            pass
             # Get RoboFocus heartbeat
             if time.time() - self.last_robofocus_update > 1.: # only update the infos every second
                 self.last_robofocus_update = time.time()
@@ -766,85 +746,6 @@ class Telescope():
                 else:
                     for (index,element) in enumerate(self.robofocus_states):
                         element[2] = "N/A"
-            # Poll socket for Stellarium
-            if self.socket is not None:
-                if self.conn is None:
-                    try:
-                        self.conn, addr = self.socket.accept()
-                        self.conn.settimeout(0)
-                        #socket.setblocking(0)
-                        self.push_message("Connection established from %s:%d."% addr)
-                    except socket.error as e:
-                        pass
-                else:
-                    try:
-                        time.sleep(0.01)
-                        data = self.conn.recv(1024)
-                        if len(data)==20:   # goto command
-                            data = struct.unpack('<hhQIi',data)
-                            ra_string, dec_string = ra_raw2str(data[-2]), dec_raw2str(data[-1])
-                            self.push_message("Received from stellarium: %s %s" % (ra_string,dec_string))
-                            if dec_string[-2:]=="60":
-                                dec_string = dec_string[:-2]+"59"
-                                self.push_message("Converted 60->59.")
-                            self.send('!CStr' + ra_string + ';')
-                            self.send('!CStd' + dec_string + ';')
-                            if self.stellarium_mode==0:
-                                self.align_from_target()
-                                self.stellarium_mode=1
-                            else: 
-                                self.go_to_target()
-                        elif len(data)==0:
-                            pass
-                        else:
-                            self.push_message("Unknown command received of length %d."%len(data))
-                    except socket.error as e:
-                        pass
-            # Poll calibration socket
-            if self.calibrationsocket is None:
-                self.calibrationsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.calibrationsocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                port = 10002
-                try:
-                    self.calibrationsocket.settimeout(0)
-                    self.calibrationsocket.bind(("127.0.0.1", port))
-                    self.calibrationsocket.listen(1)
-                    self.push_message("Server waiting for connection on port %d."%port)
-                except socket.error as e:
-                    self.push_message("Socket error (%s)"%e.strerror)
-                    self.calibrationsocket = None
-            else:
-                try:
-                    self.calibrationconn, addr = self.calibrationsocket.accept()
-                    try:
-                        self.push_message("Calibration connection established from %s:%d."% addr)
-                        while True:
-                            data = self.calibrationconn.recv(2048)
-                            if data:
-                                direction, ra_string, dec_string = data.split(";")
-                                self.send('!ASas' + direction + ';')
-                                self.stellarium_mode = 0 
-                                if dec_string[-2:]=="60":
-                                    dec_string = dec_string[:-2]+"59"
-                                    self.push_message("Converted 60->59.")
-                                self.send('!CStr' + ra_string + ';')
-                                self.send('!CStd' + dec_string + ';')
-                                self.align_from_target()
-                                self.stellarium_mode=1
-                                self.push_message("Alignment complete.")
-                            else:
-                                break
-                    except Exception as e:
-                        self.push_message(e)
-                    finally: 
-                        self.calibrationconn.close()
-                        self.calibrationsocket = None
-                except Exception as e:
-                    self.push_message(e)
-                    pass
-            # Refresh display
-            self.menu.display()
-            self.status.display()
     
     def push_message(self, message):
         self.status.push_message(message)
@@ -861,58 +762,3 @@ class Telescope():
         self.screen.refresh()
         return r
 
-    #################### Stellarium communication functions ######################
-    def toggle_stellarium_mode(self):
-        self.stellarium_mode = not self.stellarium_mode
-    
-    def dome(self):
-        i = 6
-        GPIO.output(relaymap[i], 0)
-        time.sleep(1.4)
-        GPIO.output(relaymap[i], 1)
-
-    def start_server(self):
-        if self.socket == None:
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            port = 10001
-            try:
-                self.socket.settimeout(0)
-                self.socket.bind(("127.0.0.1", port))
-                self.socket.listen(1)
-                self.push_message("Server waiting for connection on port %d."%port)
-            except socket.error as e:
-                self.push_message("Socket error (%s)"%e.strerror)
-                self.socket = None
-        else:
-            self.push_message("Server already running.")
-    
-    #################### Cleanup functions ######################
-    def exit(self):
-        if self.socket is not None:
-            if self.conn is not None:
-                self.conn.close()
-                try:
-                    self.socket.shutdown(socket.SHUT_RD)
-                except:
-                    pass
-            self.socket.close()
-        if self.calibrationsocket is not None:
-            if self.calibrationconn is not None:
-                self.calibrationconn.close()
-                try:
-                    self.calibrationsocket.shutdown(socket.SHUT_RD)
-                except:
-                    pass
-            self.calibrationsocket.close()
-        if self.serialport is not None:
-            if self.serialport.isOpen():
-                self.serialport.close()
-        if self.robofocus_serialport is not None:
-            if self.robofocus_serialport.isOpen():
-                self.robofocus_serialport.close()
-        exit()
-
-        
-if __name__ == '__main__':                                                       
-    curses.wrapper(Telescope)
