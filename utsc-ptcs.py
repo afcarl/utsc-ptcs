@@ -204,35 +204,38 @@ def stellarium_communication():
                 data = ""
                 try:
                     data = stellarium_conn.recv(1024)
-                except:
+                    if len(data)==20:   # goto command
+                        data = struct.unpack('<hhQIi',data)
+                        ra_string, dec_string = ra_raw2str(data[-2]), dec_raw2str(data[-1])
+                        statusUpdate("Stellarium", "Received from stellarium: %s %s" % (ra_string,dec_string))
+                        if dec_string[-2:]=="60":
+                            dec_string = dec_string[:-2]+"59"
+                        telescope_lock.acquire()
+                        time.sleep(0.01)
+                        telescope_port.write('!CStr' + ra_string + ';')
+                        time.sleep(0.01)
+                        telescope_port.write('!CStd' + dec_string + ';')
+                        time.sleep(0.01)
+                        if alignment_mode=="align":
+                            telescope_port.write('!AFrn;')
+                            alignment_mode = "goto"
+                            statusUpdate("Alignment mode", "GoTo next coordinates.")
+                        elif alignment_mode=="goto": 
+                            telescope_port.write('!GTrd;')
+                        time.sleep(0.1)
+                        data = telescope_port.read(1024) # empty buffer
+                        if len(data)>0:
+                            showMessage(data)
+                        telescope_lock.release()
+                    elif len(data)==0:
+                        statusUpdate("Stellarium","Disconnected. Waiting for new connection.")
+                        stellarium_conn = None
+                        pass
+                    else:
+                        statusUpdate("Stellarium","Unknown command received of length %d."%len(data))
+                except socket.error as e:
+                    # No data received.
                     pass
-                if len(data)==20:   # goto command
-                    data = struct.unpack('<hhQIi',data)
-                    ra_string, dec_string = ra_raw2str(data[-2]), dec_raw2str(data[-1])
-                    statusUpdate("Stellarium", "Received from stellarium: %s %s" % (ra_string,dec_string))
-                    if dec_string[-2:]=="60":
-                        dec_string = dec_string[:-2]+"59"
-                    telescope_lock.acquire()
-                    time.sleep(0.01)
-                    telescope_port.write('!CStr' + ra_string + ';')
-                    time.sleep(0.01)
-                    telescope_port.write('!CStd' + dec_string + ';')
-                    time.sleep(0.01)
-                    if alignment_mode=="align":
-                        telescope_port.write('!AFrn;')
-                        alignment_mode = "goto"
-                        statusUpdate("Alignment mode", "GoTo next coordinates.")
-                    elif alignment_mode=="goto": 
-                        telescope_port.write('!GTrd;')
-                    time.sleep(0.1)
-                    data = telescope_port.read(1024) # empty buffer
-                    if len(data)>0:
-                        showMessage(data)
-                    telescope_lock.release()
-                elif len(data)==0:
-                    pass
-                else:
-                    statusUpdate("Stellarium","Unknown command received of length %d."%len(data))
         else:
             stellarium_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             stellarium_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -884,308 +887,6 @@ class Telescope():
         else:
             self.push_message("Server already running.")
     
-    #################### Telescope communication functions ######################
-    def open_port(self,tryDefault=False):
-        if os.uname()[0]=="Darwin":
-            default_port_name = '/dev/tty.usbserial'
-        else:
-            if socket.gethostname()=="rein007":
-                default_port_name = '/dev/ttyAMA0'
-            else:
-                default_port_name = '/dev/ttyS0'
-        if tryDefault:    
-            port_name = default_port_name
-        else:
-            port_name = self.get_param("Telescope serial port [leave blank for '"+default_port_name+"']")
-        try:
-            if port_name == '':
-                port_name = default_port_name
-            self.serialport = serial.Serial(port_name, 19200, timeout = 0.01) 
-            self.push_message("Successfully opened serial port for telescope.")
-        except:
-            self.serialport = None
-            self.push_message("Opening serial port for telescope failed.")
-    
-    def send(self,data):
-        if len(data)<1:
-            return False
-        elif self.serialport is not None:
-            self.serialport.read(10240)
-            self.serialport.write(data)
-            self.push_message("Sent '%s' to telescope."%data)
-            time.sleep(0.5)
-            ret = self.serialport.read(1024)
-            for r in ret.split(";"): 
-                self.push_message("Received: %s."%r)
-
-            return True
-        else:
-            self.push_message("Did NOT send data to telescope (port not open).")
-            return False
-    
-    def set_alignment_side(self):
-        direction = self.get_param("Set alignment side [West/East] (blank for West)")
-        if len(direction) ==0:
-            direction = "West"
-        if direction == "W" or direction == "w":
-            direction = "West"
-        if direction == "E" or direction == "e":
-            direction = "East"
-        if direction == "West" or direction == "East": 
-            self.send('!ASas' + direction + ';')
-            self.stellarium_mode = 0 
-        else:
-            self.push_message("Not a valid alignment side.")
-
-    def set_target_rightascension(self):
-        ra = self.get_param("Set target Right Ascension [hh:mm:dd]")
-        if len(ra)>0:
-            self.send('!CStr' + ra + ';')
-        else:
-            self.push_message("Did not receive user input.")
-
-#******DAN, ARI, KIM, NEW CAMERA DEF************************************
-    def read_camera(self):
-        # Kill procs
-        if sys.platform == "darwin":
-            print("Killing PTPCamera process")
-            os.system("killall PTPCamera")
-            os.system("killall Type4Camera")
-        # Get Name
-        os.system("gphoto2 --auto-detect > .gphoto.tmp")
-        with open(".gphoto.tmp") as f:
-            lines = f.readlines()
-            if len(lines)>2:
-                line = lines[2]
-                if "usb:" in line:
-                    telescope.camera = line.split("usb:")[0].strip()
-                    # Get ISO Setting
-                    os.system("gphoto2 --get-config=iso > .gphoto.tmp" )
-                    with open(".gphoto.tmp") as f:
-                        lines = f.readlines()
-                        for line in lines:
-                            if "Current:" in line:
-                                telescope.camera_iso = line.split("Current:")[1].strip()
-                    # Get Shutter speed
-                    os.system("gphoto2 --get-config=shutterspeed > .gphoto.tmp" )
-                    with open(".gphoto.tmp") as f:
-                        lines = f.readlines()
-                        for line in lines:
-                            if "Current:" in line:
-                                telescope.camera_shutter = line.split("Current:")[1].strip()
-            else:
-                self.push_message("No camera found.")
-
-
-    def define_iso(self):
-        iso_value = self.get_param("Set ISO value 100, 200, 400, 800, 1600, 3200, 6400:")
-        if len(iso_value)>0:
-            os.system("gphoto2 --set-config capture=on --set-config iso=" + iso_value )
-        self.read_camera()
-
-    def shutter_speed(self):
-        shutter_value = self.get_param("Enter exposure time in s, e.g. 1, 5, 20, 1/10:")
-        if len(shutter_value)>0:
-            try:
-                svi = int(shutter_value)
-            except:
-                svi = 1
-            if svi<30:
-                os.system("gphoto2 --set-config capture=on --set-config shutterspeed=" + shutter_value )
-            else:
-                os.system("gphoto2 --set-config shutterspeed=bulb")
-                telescope.camera_longexpshutter = int(shutter_value)
-        self.read_camera()
-
-    def numberofpictures(self):
-        num_value = self.get_param("Number of pictures [default 1]")
-        if len(num_value)>0:
-            telescope.camera_num = int(num_value)
-        else:
-            telescope.camera_num = 1
-
-#def rename(name, num):
-#renamecmd = "mv %s %s%i.jpg"%("capt0000.jpg",name,num)
-#os.system(renamecmd)
-
-    def capture_images(self):
-        filename = self.get_param("Filename [default: test]")
-        self.read_camera()
-        if len(filename)<1:
-            filename = "test"
-        folder = 'pictures/'
-        if not os.path.exists(folder):
-            self.push_message("Creating folder '"+folder+"'.")
-            os.system("mkdir "+folder)
-        telescope.camera_path = ''+folder+''+filename
-        telescope.camera_numtaken = 0
-        telescope.camera_status = 1
-
-    def camera_check(self):
-        if telescope.camera_status == 0:
-            return
-        if telescope.camera_numtaken >= telescope.camera_num:
-            if os.path.isfile(".gphoto.tmp"):
-                self.push_message("All pictures taken.")
-                telescope.camera_status = 0
-            return
-             
-        if telescope.camera_status==1 or os.path.isfile(".gphoto.tmp"):
-            os.system("rm -f .gphoto.tmp")
-            if "bulb" not in telescope.camera_shutter:
-                self.push_message("Taking picture %d of %d." %(telescope.camera_numtaken+1,telescope.camera_num))
-                os.system("(gphoto2 --capture-image-and-download --force-overwrite --filename=%s_%04d.jpg >/dev/null; echo 1 > .gphoto.tmp) &"%(telescope.camera_path,telescope.camera_numtaken))
-            else:
-                self.push_message("Taking picture %d of %d (%ds long exp)." %(telescope.camera_numtaken+1,telescope.camera_num,telescope.camera_longexpshutter))
-                # gphoto2 --wait-event=2s --set-config eosremoterelease=Immediate --wait-event=5s --set-config eosremoterelease=Off --wait-event-and-download=5s
-                os.system("(gphoto2 --wait-event=2s --set-config eosremoterelease=Immediate --wait-event=%ds --set-config eosremoterelease=Off --force-overwrite --filename=%s_%04d.jpg --wait-event-and-download=5s >/dev/null; echo 1 > .gphoto.tmp) &"% (telescope.camera_longexpshutter, telescope.camera_path,telescope.camera_numtaken))
-            telescope.camera_status = 2
-            telescope.camera_numtaken += 1
-            
-
-        # Bulb mode not implemented yet:
-        #    cmd = "gphoto2 --set-config shutterspeed=bulb"
-        #    cmd = "gphoto2 --set-config bulb=1 eosremoterelease=Immediate --wait-event=120s --set-config eosremoterelease=Off --wait-event-and-download=2s"
-        #
-
-        # Live previewing not implemented yet:
-        #root = tk.Tk()
-        #root.geometry('400x400')
-        #canvas = tk.Canvas(root,width=400,height=400)
-        #canvas.pack()
-        #pilImage = Image.open(telescope.camera_path+"_"+str(a)+".jpg").resize((400, 400),Image.ANTIALIAS)
-        #image = ImageTk.PhotoImage(pilImage)
-        #imagesprite = canvas.create_image(0,0,image=image,anchor=tk.NW)
-        #root.after(1000, lambda: root.destroy()) # Destroy the widget after 30 seconds
-        #root.mainloop()
-
-
-#******NEW CAMERA DEF************************************
-
-    def set_target_declination(self):
-        dec = self.get_param("Set target Declination [+dd:mm:ss]")
-        if len(dec)>0:
-            self.send('!CStd' + dec + ';')
-        else:
-            self.push_message("Did not receive user input.")
-
-    def align_from_target(self):
-        self.send('!AFrn;')
-
-    def go_to_target(self):
-        self.send('!GTrd;')
-    
-    def void_alignment(self):
-        self.send('!AVoi;')
-
-    def previous_alignment(self):
-        self.send('!GTol;')
-    
-    def send_custom_command(self):
-        command = self.get_param("Command (ommit ! and ;):")
-        if len(command)>0:
-            command = "!" + command + ";"
-            self.send(command)
-        else:
-            self.push_message("Did not receive user input.")
-
-    def write_telescope_readout(self):
-        with open(self.logfilename, 'a') as f:
-            f.write(time.strftime("%Y-%m-%d %H:%M:%S\t", time.gmtime()))                  
-            for (desc, command, value) in self.telescope_states:
-                f.write(value+"\t")
-            f.write(value+"\n")
-            self.push_message("Telescope readout saved.")
-            f.close()
-
-    #################### Robofocus communication functions ######################
-    def open_robofocus_port(self):
-        if os.uname()[0]=="Darwin":
-            default_port_name = '/dev/tty.usbserial'
-        else:
-            default_port_name = '/dev/ttyUSB0'
-        port_name = self.get_param("RoboFocus serial port [leave blank for '"+default_port_name+"']")
-        try:
-            if port_name == '':
-                port_name = default_port_name
-            self.robofocus_serialport = serial.Serial(port_name, 9600, timeout = 0.01) 
-            self.push_message("Successfully opened serial port for RoboFocus.")
-            self.robofocus_get_version()
-        except:
-            self.robofocus_serialport = None
-            self.push_message("Opening serial port for RoboFocus failed.")
-            
-    def robofocus_send(self,c):            
-        Z = 0
-        for i in c:
-            Z += ord(i)
-        Z = Z%256   # checksum
-        self.push_message("Sent '%s' to RoboFocus."%c)
-        self.robofocus_serialport.write(c+chr(Z)) 
-
-    def robofocus_read(self):
-        r = self.robofocus_decode_readout(self.robofocus_serialport.read(1024))
-        self.push_message("Read '%s' from RoboFocus."%r)
-        return r
-
-    def robofocus_parse(self):
-        self.robofocus_decode_readout(self.robofocus_serialport.read(1024))
-        
-    def robofocus_decode_readout(self,r):
-        if len(r)>0:
-            if r[0]=="I" or r[0]=="O": # ignore in/out characters
-                return self.robofocus_decode_readout(r[1:])
-        ret = ""
-        if len(r)>=9:
-            Z = 0
-            for i in r[:8]:
-                Z += ord(i)
-            Z = Z%256  # checksum
-            if Z==ord(r[8]):
-                ret = r[:8]
-            else:
-                print "Checksum did not match."
-            for (index,element) in enumerate(self.robofocus_states):
-                if ret[0:2] == element[1]:
-                    value = ret[2:]
-                    while value[0]=="0":
-                        value = value[1:]
-                    element[2] = value
-
-        if len(r)>9:
-            ret += self.robofocus_decode_readout(r[9:])
-        return ret
-
-    def robofocus_get_version(self):
-        self.robofocus_serialport.read(1024) # empty buffer
-        self.robofocus_send("FV000000") 
-        time.sleep(0.15)
-        return self.robofocus_read()
-
-    def robofocus_move_in(self,steps):
-        self.robofocus_serialport.read(1024) # empty buffer
-        self.robofocus_send("FI%06d"%(steps))
-        return 
-
-    def robofocus_move_out(self,steps):
-        self.robofocus_serialport.read(1024) # empty buffer
-        self.robofocus_send("FO%06d"%(steps))
-        return 
-
-    def robofocus_userinput(self):
-        steps = self.get_param("Move RoboFocus [+=out,-=in]")
-        try: 
-            steps = int(steps)
-        except:
-            steps = 0
-        self.robofocus_move(steps)
-
-    def robofocus_move(self,steps):
-        if steps>=0:
-            return self.robofocus_move_out(steps)
-        if steps<0:
-            return self.robofocus_move_in(-steps)
-        
     #################### Cleanup functions ######################
     def exit(self):
         if self.socket is not None:
