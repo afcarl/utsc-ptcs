@@ -30,7 +30,7 @@ import signal
 import client
 import threading
 from conversions import *
-relaymap = [5,3,7,11,13,15,19]
+relaymap = [5,3,11,7,13,15,19]
 try:
     import RPi.GPIO as GPIO; 
     GPIO.setwarnings(False)
@@ -361,8 +361,6 @@ def main(stdscr):
             if td.microseconds > 400000 or td.seconds > 0:
                 GPIO.output(relaymap[0], 1)
                 GPIO.output(relaymap[1], 1)
-                GPIO.output(relaymap[2], 1)
-                GPIO.output(relaymap[3], 1)
                 updateDomeStatus()                    
                 lastkey = None
 
@@ -376,13 +374,15 @@ def main(stdscr):
             updateDomeStatus()                    
             lastkey = datetime.datetime.now()
         elif c == curses.KEY_UP:
-            GPIO.output(relaymap[2], 0)
-            updateDomeStatus()                    
-            lastkey = datetime.datetime.now()
+            if GPIO.input(relaymap[3])==1:
+                GPIO.output(relaymap[2], not GPIO.input(relaymap[2]))
+                updateDomeStatus()                    
+                lastkey = datetime.datetime.now()
         elif c == curses.KEY_DOWN:
-            GPIO.output(relaymap[3], 0)
-            updateDomeStatus()                    
-            lastkey = datetime.datetime.now()
+            if GPIO.input(relaymap[2])==1:
+                GPIO.output(relaymap[3], not GPIO.input(relaymap[3]))
+                updateDomeStatus()                    
+                lastkey = datetime.datetime.now()
         elif c == ord('1'):
             current = GPIO.input(relaymap[4])
             GPIO.output(relaymap[4], not current)
