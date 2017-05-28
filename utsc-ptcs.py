@@ -249,6 +249,66 @@ def stellarium_communication():
         time.sleep(0.1)
 
 
+autoalignment_socket = None
+autoalignment_conn = None
+def autoalignment_communication():
+    global autoalignment_socket
+    global autoalignment_conn
+    while stop_threads==False:
+        # Poll socket for Stellarium
+        if autoalignment_socket is not None:
+            if autoalignment_conn is None:
+                try:
+                    autoalignment_conn, addr = autoalignment_socket.accept()
+                    autoalignment_conn.settimeout(0)
+                    #socket.setblocking(0)
+                    statusUpdate("Auto alignment", "Connection established from %s:%d."% addr)
+                except socket.error as e:
+                    pass
+            else:
+                time.sleep(0.01)
+                data = ""
+                try:
+                    data = autoalignment_conn.recv(2048)
+                    if data:
+                        telescope_lock.acquire()
+                        time.sleep(0.01)
+                        direction, ra_string, dec_string = data.split(";")
+                        telescope_port.write('!ASas' + direction + ';')
+                        time.sleep(0.01)
+                        if dec_string[-2:]=="60":
+                            dec_string = dec_string[:-2]+"59"
+                        telescope_port.write('!CStr' + ra_string + ';')
+                        time.sleep(0.01)
+                        telescope_port.write('!CStd' + dec_string + ';')
+                        time.sleep(0.01)
+                        telescope_port.write('!AFrn;')
+                        showMessage("Auto alignment complete.")
+                        telescope_lock.release()
+                    else:
+                        break
+                except Exception as e:
+                    showMessage("Auto alignment: Error: %s"% e)
+                finally: 
+                    showMessage("Auto alignment: Closing connection.")
+                    autoalignment_conn.close()
+                    autoalignment_conn = None
+        else:
+            autoalignment_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            autoalignment_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            port = 10002
+            try:
+                autoalignment_socket.settimeout(0)
+                autoalignment_socket.bind(("127.0.0.1", port))
+                autoalignment_socket.listen(1)
+                statusUpdate("Auto alignment", "Server waiting for connection on port %d."%port)
+            except socket.error as e:
+                statusUpdate("Auto alignment", "Socket error (%s)"%e.strerror)
+                autoalignment_socket = None
+                time.sleep(5)
+        time.sleep(0.1)
+
+
 def finish():
     print("Finishing...")
     global stop_threads
@@ -261,6 +321,14 @@ def finish():
             except:
                 pass
         stellarium_socket.close()
+    if autoalignment_socket is not None:
+        if autoalignment_conn is not None:
+            autoalignment_conn.close()
+            try:
+                autoalignment_socket.shutdown(socket.SHUT_RD)
+            except:
+                pass
+        autoalignment_socket.close()
     exit(1)
     return
     
@@ -314,6 +382,7 @@ def main(stdscr):
             'Time',
             'Telescope', 
             'Stellarium', 
+            'Auto alignment', 
             'Alignment mode', 
             'Dome', 
     ] + [k for k,c in telescope_states]
@@ -352,6 +421,8 @@ def main(stdscr):
     telescope_thread.start()
     stellarium_thread = threading.Thread(target=stellarium_communication)
     stellarium_thread.start()
+    autoalignment_thread = threading.Thread(target=autoalignment_communication)
+    autoalignment_thread.start()
 
     lastkey = None
     while True:
