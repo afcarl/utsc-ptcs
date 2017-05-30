@@ -126,6 +126,49 @@ telescope_states= [
     ['Target declination',           '!CGtd;']
 ]
 
+def telescope_response(ret):
+    if ret is None:
+        return
+    atcl_asynch = ret.strip().split(chr(0x9F))
+    if len(atcl_asynch)==1:
+        ret = atcl_asynch[0]
+    else:
+        for r in atcl_asynch:
+            telescope_response(r)
+        return
+    if ret[0] == chr(0x8F):
+        ret = "ATCL_ACK"
+    elif ret[0] == chr(0xA5):
+        ret = "ATCL_NACK"
+    showMessage(ret)
+
+
+def telescope_cmd(cmd):
+    if telescope_port is not None:
+        time.sleep(0.05)
+        telescope_port.write(command) 
+        time.sleep(0.05)
+        try:
+            ret = telescope_port.read(2048).strip()  # empty buffer
+            if len(ret)>0:
+                if ret[0] == chr(0x8F):
+                    ret = "ATCL_ACK"
+                elif ret[0] == chr(0xA5):
+                    ret = "ATCL_NACK"
+                else:
+                    if ret[-1] == ";":
+                        ret = ret[:-1]
+                    try:
+                        if command == '!CGra;':
+                            ra = ra_str2raw(ret)
+                        if command == '!CGde;':
+                            dec = dec_str2raw(ret)
+                    except:
+                        ra, dec = None, None
+                showMessage(data)
+        time.sleep(0.05)
+    return ret
+
 stop_threads = False
 ncurses_lock = threading.Lock()
 telescope_lock = threading.Lock()
@@ -137,7 +180,7 @@ def telescope_communication():
             telescope_lock.acquire()
             data = telescope_port.read(2048) # empty buffer
             if len(data)>0:
-                showMessage(data)
+                telescope_response(data)
             for (index,element) in enumerate(telescope_states):
                 key, command = element
                 ret = "NNN"
@@ -292,6 +335,8 @@ def autoalignment_communication():
                         telescope_port.write('!CStd' + dec_string + ';')
                         time.sleep(0.01)
                         telescope_port.write('!AFrn;')
+                        alignment_mode = "goto"
+                        statusUpdate("Alignment mode", "GoTo next coordinates.")
                         telescope_lock.release()
                 except socket.error as e:
                     # No data received
