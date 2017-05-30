@@ -86,7 +86,7 @@ def statusUpdate(k, value):
     statuswin.refresh()
     ncurses_lock.release()
 
-messagesN = 5
+messagesN = 10
 messagesi = 1
 messages = []
 messageswin = None
@@ -112,7 +112,8 @@ def showMessage(value):
     for index, key in enumerate(reversed(messages)):      
         messageswin.move(1+index, 2);   
         messageswin.clrtoeol(); 
-        messageswin.addstr(1+index, 2, "%4d : %s" % (messagesi+index,key))           
+        messageswin.addstr(1+index, 2, "%4d : %s" % (messagesi+len(messages)-index-1,key))           
+    messageswin.border(0)
     messageswin.refresh()
     ncurses_lock.release()
     
@@ -126,48 +127,58 @@ telescope_states= [
     ['Target declination',           '!CGtd;']
 ]
 
+special = [
+        [chr(0xB1), "ATCL_ENTER"],
+        [chr(0x8F), "ATCL_ACK"],
+        [chr(0xA5), "ATCL_NACK"],
+        [chr(0x9A), "ATCL_STATUS"],
+        [chr(0x9B), "ATCL_WARNING"],
+        [chr(0x9C), "ATCL_ALERT"],
+        [chr(0x9D), "ATCL_INTERNAL_ERROR"],
+        [chr(0x9E), "ATCL_SYNTAX_ERROR"],
+        [chr(0x9F), "ATCL_IDC_ASYNCH"],
+        [chr(0xA0), "ATCL_IDC_VERIFY"],
+        [chr(0xA1), "ATCL_IDC_FRAMING(1)"],
+        [chr(0xA2), "ATCL_IDC_COMM_OVERRUN(1)"],
+        [chr(0xA3), "ATCL_IDC_CMND_OVERRUN(1)"],
+        [chr(0xA4), "ATCL_CMND_TIMEOUT(1)"],
+        [chr(0xA6), "ATCL_ID_CMND"],
+        [chr(0xA7), "ATCL_ID_LINK"],
+        [chr(0xA8), "ATCL_ID_DING"],
+        [chr(0xAA), "ATCL_CHANGE_NOTIFY"],
+        ]
+
 def telescope_response(ret):
-    if ret is None:
+    if ret is None or len(ret)==0:
         return
-    atcl_asynch = ret.strip().split(chr(0x9F))
-    if len(atcl_asynch)==1:
-        ret = atcl_asynch[0]
-    else:
-        for r in atcl_asynch:
-            telescope_response(r)
-        return
-    if ret[0] == chr(0x8F):
-        ret = "ATCL_ACK"
-    elif ret[0] == chr(0xA5):
-        ret = "ATCL_NACK"
+    mask =  0b10000000
+    ret = ret.strip()
+    nextMessageColor = None
+    for i in range(len(ret)):
+        if ord(ret[i])&mask==128:
+            if i>0:
+                showMessage(ret[0:i])
+            for c,n in special:
+                if ret[i] == c:
+                    if n not in ["ATCL_STATUS","ATCL_ACK","ATCL_IDC_ASYNCH"]:
+                        showMessage(n)
+                    break
+            if len(ret)>i:
+                telescope_response(ret[i+1:])
+            return
     showMessage(ret)
 
 
-def telescope_cmd(cmd):
+def telescope_cmd(cmd,hideResponse=False):
     if telescope_port is not None:
-        time.sleep(0.05)
-        telescope_port.write(command) 
-        time.sleep(0.05)
-        try:
-            ret = telescope_port.read(2048).strip()  # empty buffer
-            if len(ret)>0:
-                if ret[0] == chr(0x8F):
-                    ret = "ATCL_ACK"
-                elif ret[0] == chr(0xA5):
-                    ret = "ATCL_NACK"
-                else:
-                    if ret[-1] == ";":
-                        ret = ret[:-1]
-                    try:
-                        if command == '!CGra;':
-                            ra = ra_str2raw(ret)
-                        if command == '!CGde;':
-                            dec = dec_str2raw(ret)
-                    except:
-                        ra, dec = None, None
-                showMessage(data)
-        time.sleep(0.05)
-    return ret
+        time.sleep(0.01)
+        telescope_port.write(cmd) 
+        time.sleep(0.01)
+        ret = telescope_port.read(2048).strip()  # empty buffer
+        if not hideResponse:
+            telescope_response(ret);
+        return ret
+    return None
 
 stop_threads = False
 ncurses_lock = threading.Lock()
@@ -183,10 +194,7 @@ def telescope_communication():
                 telescope_response(data)
             for (index,element) in enumerate(telescope_states):
                 key, command = element
-                ret = "NNN"
-                telescope_port.write(command) 
-                time.sleep(0.05)
-                ret = telescope_port.read(1024).strip() 
+                ret = telescope_cmd(command,hideResponse=True) 
                 atcl_asynch = ret.split(chr(0x9F))
                 if len(atcl_asynch)>1:
                     ret = atcl_asynch[0]
@@ -254,21 +262,14 @@ def stellarium_communication():
                         if dec_string[-2:]=="60":
                             dec_string = dec_string[:-2]+"59"
                         telescope_lock.acquire()
-                        time.sleep(0.01)
-                        telescope_port.write('!CStr' + ra_string + ';')
-                        time.sleep(0.01)
-                        telescope_port.write('!CStd' + dec_string + ';')
-                        time.sleep(0.01)
+                        telescope_cmd('!CStr' + ra_string + ';')
+                        telescope_cmd('!CStd' + dec_string + ';')
                         if alignment_mode=="align":
-                            telescope_port.write('!AFrn;')
+                            telescope_cmd('!AFrn;')
                             alignment_mode = "goto"
                             statusUpdate("Alignment mode", "GoTo next coordinates.")
                         elif alignment_mode=="goto": 
-                            telescope_port.write('!GTrd;')
-                        time.sleep(0.1)
-                        data = telescope_port.read(1024) # empty buffer
-                        if len(data)>0:
-                            showMessage(data)
+                            telescope_cmd('!GTrd;')
                         telescope_lock.release()
                     elif len(data)==0:
                         # Disconnected
@@ -326,15 +327,12 @@ def autoalignment_communication():
                         time.sleep(0.01)
                         direction, ra_string, dec_string = data.split(";")
                         showMessage("Auto alignment coordinates received: (%s) %s %s" %(direction, ra_string, dec_string))
-                        telescope_port.write('!ASas' + direction + ';')
-                        time.sleep(0.01)
+                        telescope_cmd('!ASas' + direction + ';')
                         if dec_string[-2:]=="60":
                             dec_string = dec_string[:-2]+"59"
-                        telescope_port.write('!CStr' + ra_string + ';')
-                        time.sleep(0.01)
-                        telescope_port.write('!CStd' + dec_string + ';')
-                        time.sleep(0.01)
-                        telescope_port.write('!AFrn;')
+                        telescope_cmd('!CStr' + ra_string + ';')
+                        telescope_cmd('!CStd' + dec_string + ';')
+                        telescope_cmd('!AFrn;')
                         alignment_mode = "goto"
                         statusUpdate("Alignment mode", "GoTo next coordinates.")
                         telescope_lock.release()
@@ -385,14 +383,14 @@ def start_manual_alignment_e():
     global alignment_mode
     alignment_mode = "align"
     telescope_lock.acquire()
-    telescope_port.write('!ASasEast;')
+    telescope_cmd('!ASasEast;')
     telescope_lock.release()
 def start_manual_alignment_w():
     statusUpdate("Alignment mode", "Align to next coordinates (West)")
     global alignment_mode
     alignment_mode = "align"
     telescope_lock.acquire()
-    telescope_port.write('!ASasWest;')
+    telescope_cmd('!ASasWest;')
     telescope_lock.release()
 
 menuwin = None
@@ -431,8 +429,8 @@ def main(stdscr):
             'Telescope', 
             'Stellarium', 
             'Auto alignment', 
-            'Alignment mode', 
             'Dome', 
+            'Alignment mode', 
     ] + [k for k,c in telescope_states]
     global statuswin
     statuswin = curses.newwin(len(statusitems)+2,curses.COLS-3,menuwin.getbegyx()[0]+menuwin.getmaxyx()[0],2)     
