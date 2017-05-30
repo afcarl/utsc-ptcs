@@ -48,6 +48,8 @@ if alignment_side == "e":
     alignment_side = "East"
 elif alignment_side == "w":
     alignment_side = "West"
+else:
+    raise ValueError("Alignmentside not valid")
 
 
 if os.path.isfile("capt0000.jpg"):
@@ -98,6 +100,9 @@ try:
                 ra_string, dec_string = ra_raw2str(float(res["ra"])/360.*4294967296.), dec_raw2str(float(res["dec"])/90.*1073741824.)
                 print("Got: %s %s."% (ra_string, dec_string))
 
+                print("Opening ssh tunnel to telescope control system...")
+                os.system("ssh -L 10002:localhost:10002 pi@rein009 sleep 10  & ")
+                time.sleep(1)
                 print("Opening connection to telescope control system...")
 
                 try:
@@ -113,7 +118,6 @@ try:
                 time.sleep(1)
                 calibrationDone = True
             else:
-                :w
                 print(got)
                 print("\033[91mCalibration failed.\033[0m")
                 quit(0)
