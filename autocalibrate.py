@@ -51,6 +51,8 @@ if alignment_side == "e":
     alignment_side = "East"
 elif alignment_side == "w":
     alignment_side = "West"
+else:
+    raise ValueError("Alignmentside not valid")
 
 
 if os.path.isfile("capt0000.jpg") and debug==False:
@@ -118,7 +120,6 @@ try:
                 time.sleep(1)
                 calibrationDone = True
             else:
-                :w
                 print(got)
                 print("\033[91mCalibration failed.\033[0m")
                 quit(0)
