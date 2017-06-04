@@ -35,7 +35,6 @@ def ra_raw2str(raw):
     return  "%02d:%02d:%02d" % (int(ra),  int(ra%1*60),  round(ra%1*60%1*60, 1)) 
 
 alignment_side =  None
-    alignment_side = "e"
 
 while alignment_side is not "e" and alignment_side is not "w":
     try:

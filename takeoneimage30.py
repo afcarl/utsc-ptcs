@@ -26,7 +26,7 @@ if os.path.isfile("capt0000.jpg"):
     print("Deleting old image file...")
     os.system("rm -f capt0000.jpg")
 print("Configuring camera...")
-r = os.system("gphoto2 --set-config capture=on --set-config iso=3200")<<8
+r = os.system("gphoto2 --set-config capture=on --set-config iso=6400")<<8
 if r!=0:
     print("\033[91mProblem encountered trying to set ISO.\033[0m")
 r = os.system("gphoto2 --set-config shutterspeed=bulb")<<8
