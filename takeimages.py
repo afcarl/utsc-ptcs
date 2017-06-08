@@ -19,17 +19,27 @@
 #
 import os
 import time
+import glob
 import client
 import socket
 import sys
-if len(sys.argv)!=3:
-    print("Usage ./takeimages.py SEC NUM")
+if len(sys.argv)<3:
+    print("Usage ./takeimages.py SEC NUM [1]")
     exit(-1)
 
+if len(sys.argv)==4:
+    cont = True
+else:
+    cont = False
 N = int(sys.argv[2])
 S = int(sys.argv[1])
 
-for i in range(N):
+if cont:
+    start = len(glob.glob("./capt_multi_*.jpg"))
+else:
+    start = 0
+
+for i in range(start,N+start):
     if os.path.isfile("capt0000.jpg"):
         print("Deleting old image file...")
         os.system("rm -f capt0000.jpg")
