@@ -51,26 +51,19 @@ else:
     raise ValueError("Alignmentside not valid")
 
 
-if os.path.isfile("capt0000.jpg"):
+if os.path.isfile("capt_multi_00000.jpg"):
     print("Deleting old image file...")
-    os.system("rm -f capt0000.jpg")
-print("Configuring camera...")
-r = os.system("gphoto2 --set-config capture=on --set-config iso=3200")<<8
-if r!=0:
-    print("\033[91mProblem encountered trying to set ISO.\033[0m")
-r = os.system("gphoto2 --set-config capture=on --set-config shutterspeed=10")<<8
-if r!=0:
-    print("\033[91mProblem encountered trying to set shutterspeed.\033[0m")
-print("Taking a 10 second exposure...")
-r = os.system("gphoto2 --set-config eosremoterelease=Immediate --wait-event=10s --wait-event-and-download=2s --force-overwrite >/dev/null")
+    os.system("rm -f capt_multi_00000.jpg")
+r = os.system("./takeimages.py 10 1")<<8
 if r!=0:
     print("\033[91mProblem encountered trying to take image. Make sure camera is connected and not in use.\033[0m")
     quit(0)
+time.sleep(1)
     
 print("\033[92mImage captured. Uploading to astrometry.net...\033[0m")
 client = client.Client()
 client.login(apikey)
-upres = client.upload("./capt0000.jpg")
+upres = client.upload("./capt_multi_00000.jpg")
 subid = upres["subid"]
 print("\033[92mImage upload successful. Submission id is %s. Waiting for result...\033[0m" % subid)
 try:

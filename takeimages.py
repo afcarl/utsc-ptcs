@@ -32,7 +32,7 @@ if len(sys.argv)==4:
 else:
     cont = False
 N = int(sys.argv[2])
-S = int(sys.argv[1])
+S = sys.argv[1]
 
 if cont:
     start = len(glob.glob("./capt_multi_*.jpg"))
@@ -51,7 +51,7 @@ for i in range(start,N+start):
     if r!=0:
         print("\033[91mProblem encountered trying to set shutterspeed.\033[0m")
     print("Taking a 30 second exposure...")
-    r = os.system("gphoto2 --set-config eosremoterelease=Immediate --wait-event=%ds --set-config eosremoterelease=\"Release Full\" --wait-event-and-download=2s"%S)
+    r = os.system("gphoto2 --set-config eosremoterelease=Immediate --wait-event=%ss --set-config eosremoterelease=\"Release Full\" --wait-event-and-download=2s"%S)
     if r!=0:
         print("\033[91mProblem encountered trying to take image. Make sure camera is connected and not in use.\033[0m")
         
