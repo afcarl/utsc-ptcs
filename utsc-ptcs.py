@@ -42,9 +42,6 @@ try:
 except:
     print("cannot access GPIO ports")
 
-with open('apikey.txt', 'r') as content_file:
-    apikey = content_file.read().strip()
-
 from curses import wrapper
 
 def updateDomeStatus():
