@@ -93,7 +93,7 @@ try:
                 print("Got: %s %s."% (ra_string, dec_string))
 
                 print("Opening ssh tunnel to telescope control system...")
-                os.system("ssh -L 10002:localhost:10002 pi@rein009 sleep 10  & ")
+                os.system("ssh -L 10002:localhost:10002 observer@rein009.utsc.utoronto.ca sleep 10  & ")
                 time.sleep(1)
                 print("Opening connection to telescope control system...")
 
