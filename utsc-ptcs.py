@@ -29,6 +29,7 @@ import sys
 import signal
 import client
 import threading
+import subprocess
 from conversions import *
 relaymap = [5,3,11,7,13,15,19]
 try:
@@ -114,6 +115,15 @@ def showMessage(value):
     messageswin.refresh()
     ncurses_lock.release()
     
+vlcproc = None
+import psutil
+
+def kill(proc_pid):
+    process = psutil.Process(proc_pid)
+    for proc in process.children(recursive=True):
+        proc.kill()
+    process.kill()
+
 telescope_port = None    
 telescope_states= [
     ['Alignment state',              '!AGas;'],  
@@ -353,7 +363,12 @@ def autoalignment_communication():
 
 
 def finish():
+    if vlcproc is not None:
+        os.system("kill -9 %d" % vlcproc.pid)
     print("Finishing...")
+    for n,pin in enumerate(relaymap):
+        if n<4: # only turn off dome, not other equipment
+            GPIO.output(pin, 1)
     global stop_threads
     stop_threads = True
     if stellarium_socket is not None:
@@ -408,6 +423,7 @@ def main(stdscr):
             "e/w/g              - Toggle between manual align (East/West) and GoTo",
             "Left/Right/Up/Down - Control dome",
             "1/2/3              - Control peripherals (light/telescope/camera) ",
+            "v                  - Start video stream",
             "q                  - Exit",
             ]
     global menuwin
@@ -523,6 +539,19 @@ def main(stdscr):
         elif c == ord('g'):
             alignment_mode = "goto"
             statusUpdate("Alignment mode", "GoTo next coordinates.")
+        elif c == ord('v'):
+            global vlcproc
+            if vlcproc is not None:
+                showMessage("Killing vlc video stream (pid=%d)."%vlcproc.pid)
+                os.system("kill -9 %d" % vlcproc.pid)
+                vlcproc = None
+            os.system("v4l2-ctl --set-fmt-video=width=160,height=120")
+
+            cmd = ["/usr/bin/cvlc", "--no-audio", "v4l2:///dev/video0", "--v4l2-width", "160", "--v4l2-height", "120", "--v4l2-chroma", "MJPG", "--v4l2-hflip", "1", "--v4l2-vflip", "1", "--sout", "#standard{access=http{mime=multipart/x-mixed-replace;boundary=--7b3cc56e5f51db803f790dad720ed50a},mux=mpjpeg,dst=:8080/}", "-I", "dummy", "vlc://quit"]
+            FNULL = open(os.devnull, 'w')
+            vlcproc = subprocess.Popen(cmd, stdout=FNULL, stderr=subprocess.STDOUT, shell=False)
+            showMessage("Starting vlc video stream (pid=%d)."%vlcproc.pid)
+
     
 
 wrapper(main)
