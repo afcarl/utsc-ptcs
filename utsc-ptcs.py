@@ -354,6 +354,9 @@ def autoalignment_communication():
 
 def finish():
     print("Finishing...")
+    for n,pin in enumerate(relaymap):
+        if n<4: # only turn off dome, not other equipment
+            GPIO.output(pin, 1)
     global stop_threads
     stop_threads = True
     if stellarium_socket is not None:
