@@ -46,8 +46,8 @@ for i in range(start,N+start):
     r = os.system("gphoto2 --set-config shutterspeed=bulb")<<8
     if r!=0:
         print("\033[91mProblem encountered trying to set shutterspeed.\033[0m")
-    print("Taking a 30 second exposure...")
-    r = os.system("gphoto2 --set-config eosremoterelease=Immediate --wait-event=%ss --set-config eosremoterelease=\"Release Full\" --wait-event-and-download=2s"%S)
+    print("Taking a %s second exposure..."%S)
+    r = os.system("gphoto2 --set-config eosremoterelease=Immediate --wait-event=%ss --set-config eosremoterelease=\"Release Full\" --wait-event-and-download=2s | sed -n '/UNKNOWN/!p'"%S)
     if r!=0:
         print("\033[91mProblem encountered trying to take image. Make sure camera is connected and not in use.\033[0m")
         
