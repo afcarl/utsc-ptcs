@@ -32,7 +32,7 @@ S = sys.argv[1]
 
 d = time.strftime("%Y-%m-%d")
 
-start = len(glob.glob("./images/%s/*.jpg"%d))
+start = len(glob.glob("./images/%s/full*.jpg"%d))
 
 for i in range(start,N+start):
     if os.path.isfile("capt0000.jpg"):
