@@ -53,4 +53,6 @@ for i in range(start,N+start):
         
     print("\033[92mImage captured.\033[0m")
     os.system("mkdir -p images/%s" % d)
-    os.system("cp capt0000.jpg images/%s/image_%05d_iso%s_shutter%ss.jpg"%(d,i,iso,S))
+    os.system("cp capt0000.jpg images/%s/full_%05d_iso%s_shutter%ss.jpg"%(d,i,iso,S))
+    os.system("convert -resize 2000x1333 capt0000.jpg images/%s/medium_%05d_iso%s_shutter%ss.jpg"%(d,i,iso,S))
+    os.system("convert -resize 800x533 capt0000.jpg images/%s/small_%05d_iso%s_shutter%ss.jpg"%(d,i,iso,S))
