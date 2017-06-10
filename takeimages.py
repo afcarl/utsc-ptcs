@@ -24,27 +24,23 @@ import client
 import socket
 import sys
 if len(sys.argv)<3:
-    print("Usage ./takeimages.py SEC NUM [1]")
+    print("Usage ./takeimages.py SEC NUM")
     exit(-1)
 
-if len(sys.argv)==4:
-    cont = True
-else:
-    cont = False
 N = int(sys.argv[2])
 S = sys.argv[1]
 
-if cont:
-    start = len(glob.glob("./capt_multi_*.jpg"))
-else:
-    start = 0
+d = time.strftime("%Y-%m-%d")
+
+start = len(glob.glob("./images/%s/*.jpg"%d))
 
 for i in range(start,N+start):
     if os.path.isfile("capt0000.jpg"):
         print("Deleting old image file...")
         os.system("rm -f capt0000.jpg")
     print("Configuring camera...")
-    r = os.system("gphoto2 --set-config capture=on --set-config iso=3200")<<8
+    iso = "3200"
+    r = os.system("gphoto2 --set-config capture=on --set-config iso=%s"%iso)<<8
     if r!=0:
         print("\033[91mProblem encountered trying to set ISO.\033[0m")
     r = os.system("gphoto2 --set-config shutterspeed=bulb")<<8
@@ -56,7 +52,5 @@ for i in range(start,N+start):
         print("\033[91mProblem encountered trying to take image. Make sure camera is connected and not in use.\033[0m")
         
     print("\033[92mImage captured.\033[0m")
-    d = time.strftime("%Y-%m-%d")
-    os.system("mkdir images")
-    os.system("mkdir images/%s" % d)
-    os.system("cp capt0000.jpg images/%s/capt_multi_%05d.jpg"%(d,i))
+    os.system("mkdir -p images/%s" % d)
+    os.system("cp capt0000.jpg images/%s/image_%05d_iso%s_shutter%ss.jpg"%(d,i,iso,S))
