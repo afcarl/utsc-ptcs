@@ -56,4 +56,7 @@ for i in range(start,N+start):
         print("\033[91mProblem encountered trying to take image. Make sure camera is connected and not in use.\033[0m")
         
     print("\033[92mImage captured.\033[0m")
-    os.system("mv capt0000.jpg capt_multi_%05d.jpg"%i)
+    d = time.strftime("%Y-%m-%d")
+    os.system("mkdir images")
+    os.system("mkdir images/%s" % d)
+    os.system("cp capt0000.jpg images/%s/capt_multi_%05d.jpg"%(d,i))
