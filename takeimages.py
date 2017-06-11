@@ -23,12 +23,14 @@ import glob
 import client
 import socket
 import sys
-if len(sys.argv)<3:
+if len(sys.argv)<2:
     print("Usage ./takeimages.py SEC NUM")
     exit(-1)
-
-N = int(sys.argv[2])
 S = sys.argv[1]
+if len(sys.argv)==2:
+    N = 1
+else:
+    N = int(sys.argv[2])
 
 d = time.strftime("%Y-%m-%d")
 
