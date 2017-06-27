@@ -115,7 +115,8 @@ def showMessage(value):
     messageswin.refresh()
     ncurses_lock.release()
     
-vlcproc = None
+vlcproc1 = None
+vlcproc2 = None
 import psutil
 
 def kill(proc_pid):
@@ -363,8 +364,10 @@ def autoalignment_communication():
 
 
 def finish():
-    if vlcproc is not None:
-        os.system("kill -9 %d" % vlcproc.pid)
+    if vlcproc1 is not None:
+        os.system("kill -9 %d" % vlcproc1.pid)
+    if vlcproc2 is not None:
+        os.system("kill -9 %d" % vlcproc2.pid)
     print("Finishing...")
     for n,pin in enumerate(relaymap):
         if n<4: # only turn off dome, not other equipment
@@ -540,17 +543,28 @@ def main(stdscr):
             alignment_mode = "goto"
             statusUpdate("Alignment mode", "GoTo next coordinates.")
         elif c == ord('v'):
-            global vlcproc
-            if vlcproc is not None:
-                showMessage("Killing vlc video stream (pid=%d)."%vlcproc.pid)
-                os.system("kill -9 %d" % vlcproc.pid)
-                vlcproc = None
+            global vlcproc1
+            if vlcproc1 is not None:
+                showMessage("Killing vlc video stream (pid=%d)."%vlcproc1.pid)
+                os.system("kill -9 %d" % vlcproc1.pid)
+                vlcproc1 = None
             os.system("v4l2-ctl --set-fmt-video=width=160,height=120")
 
             cmd = ["/usr/bin/cvlc", "--no-audio", "v4l2:///dev/video0", "--v4l2-width", "160", "--v4l2-height", "120", "--v4l2-chroma", "MJPG", "--v4l2-hflip", "1", "--v4l2-vflip", "1", "--sout", "#standard{access=http{mime=multipart/x-mixed-replace;boundary=--7b3cc56e5f51db803f790dad720ed50a},mux=mpjpeg,dst=:8080/}", "-I", "dummy", "vlc://quit"]
             FNULL = open(os.devnull, 'w')
-            vlcproc = subprocess.Popen(cmd, stdout=FNULL, stderr=subprocess.STDOUT, shell=False)
-            showMessage("Starting vlc video stream (pid=%d)."%vlcproc.pid)
+            vlcproc1 = subprocess.Popen(cmd, stdout=FNULL, stderr=subprocess.STDOUT, shell=False)
+            showMessage("Starting vlc video stream (pid=%d)."%vlcproc1.pid)
+            global vlcproc2
+            if vlcproc2 is not None:
+                showMessage("Killing vlc video stream (pid=%d)."%vlcproc2.pid)
+                os.system("kill -9 %d" % vlcproc2.pid)
+                vlcproc2 = None
+            os.system("v4l2-ctl --set-fmt-video=width=160,height=120")
+
+            cmd = ["/usr/bin/cvlc", "--no-audio", "v4l2:///dev/video1", "--v4l2-width", "160", "--v4l2-height", "120", "--v4l2-chroma", "MJPG", "--v4l2-hflip", "1", "--v4l2-vflip", "1", "--sout", "#standard{access=http{mime=multipart/x-mixed-replace;boundary=--7b3cc56e5f51db803f790dad720ed50a},mux=mpjpeg,dst=:8081/}", "-I", "dummy", "vlc://quit"]
+            FNULL = open(os.devnull, 'w')
+            vlcproc2 = subprocess.Popen(cmd, stdout=FNULL, stderr=subprocess.STDOUT, shell=False)
+            showMessage("Starting vlc video stream (pid=%d)."%vlcproc2.pid)
 
     
 
