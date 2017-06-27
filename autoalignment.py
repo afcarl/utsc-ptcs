@@ -51,9 +51,9 @@ else:
     raise ValueError("Alignmentside not valid")
 
 
-if os.path.isfile("capt_multi_00000.jpg"):
+if os.path.isfile("capt0000.jpg"):
     print("Deleting old image file...")
-    os.system("rm -f capt_multi_00000.jpg")
+    os.system("rm -f capt0000.jpg")
 r = os.system("./takeimages.py 10 1")<<8
 if r!=0:
     print("\033[91mProblem encountered trying to take image. Make sure camera is connected and not in use.\033[0m")
@@ -63,7 +63,7 @@ time.sleep(1)
 print("\033[92mImage captured. Uploading to astrometry.net...\033[0m")
 client = client.Client()
 client.login(apikey)
-upres = client.upload("./capt_multi_00000.jpg")
+upres = client.upload("./capt0000.jpg")
 subid = upres["subid"]
 print("\033[92mImage upload successful. Submission id is %s. Waiting for result...\033[0m" % subid)
 try:
