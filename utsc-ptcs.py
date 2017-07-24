@@ -36,6 +36,10 @@ try:
     import RPi.GPIO as GPIO; 
     GPIO.setwarnings(False)
     GPIO.setmode(GPIO.BOARD); 
+    # Servo
+    GPIO.setup(12, GPIO.OUT)
+    servostatus = 5.
+    # Relays
     for n,pin in enumerate(relaymap):
         GPIO.setup(pin, GPIO.OUT)
         if n<4: # only turn off dome, not other equipment
@@ -372,6 +376,7 @@ def finish():
     for n,pin in enumerate(relaymap):
         if n<4: # only turn off dome, not other equipment
             GPIO.output(pin, 1)
+    GPIO.cleanup()
     global stop_threads
     stop_threads = True
     if stellarium_socket is not None:
@@ -516,6 +521,19 @@ def main(stdscr):
                 GPIO.output(relaymap[3], not GPIO.input(relaymap[3]))
                 updateDomeStatus()                    
                 lastkey = datetime.datetime.now()
+        elif c == ord('s'):
+            global servostatus
+            if servostatus == 10.:
+                servostatus = 4.75
+                showMessage("Servo closing telescope")
+            else:
+                servostatus = 10.
+                showMessage("Servo opening telescope")
+            servo = GPIO.PWM(12, 50)
+            servo.start(servostatus)
+            time.sleep(1.)
+            servo.stop()
+		
         elif c == ord('1'):
             current = GPIO.input(relaymap[4])
             GPIO.output(relaymap[4], not current)
