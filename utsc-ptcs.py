@@ -301,7 +301,7 @@ def stellarium_communication():
                 stellarium_socket.settimeout(0)
                 stellarium_socket.bind(("127.0.0.1", port))
                 stellarium_socket.listen(1)
-                statusUpdate("Stellarium", "Server waiting for connection on port %d."%port)
+                statusUpdate("Stellarium", "Listening on port %d."%port)
             except socket.error as e:
                 statusUpdate("Stellarium", "Socket error (%s)"%e.strerror)
                 stellarium_socket = None
@@ -359,7 +359,7 @@ def autoalignment_communication():
                 autoalignment_socket.settimeout(0)
                 autoalignment_socket.bind(("127.0.0.1", port))
                 autoalignment_socket.listen(1)
-                statusUpdate("Auto alignment", "Server waiting for connection on port %d."%port)
+                statusUpdate("Auto alignment", "Listening on port %d."%port)
             except socket.error as e:
                 statusUpdate("Auto alignment", "Socket error (%s)"%e.strerror)
                 autoalignment_socket = None
@@ -428,9 +428,9 @@ def main(stdscr):
     stdscr.refresh()
 
     menuitems = [
-            "e/w/g              - Toggle between manual align (East/West) and GoTo",
+            "e/w/g              - Manual align (East/West) / GoTo",
             "Left/Right/Up/Down - Control dome",
-            "1/2/3              - Control peripherals (light/telescope/camera) ",
+            "1/2/3/4            - Control light/telescope/camera/cover",
             "v                  - Start video stream",
             "q                  - Exit",
             ]
@@ -521,7 +521,7 @@ def main(stdscr):
                 GPIO.output(relaymap[3], not GPIO.input(relaymap[3]))
                 updateDomeStatus()                    
                 lastkey = datetime.datetime.now()
-        elif c == ord('s'):
+        elif c == ord('4'):
             global servostatus
             if servostatus == 10.:
                 servostatus = 4.75
