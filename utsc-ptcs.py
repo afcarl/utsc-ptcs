@@ -60,21 +60,27 @@ def updateDomeStatus():
     elif not GPIO.input(relaymap[3]):
         dome = "vvv"
 
-    dome = "Movement ("+dome+")  "
+    statusUpdate("Dome movement",dome)
 
+    peri = ""
     if not GPIO.input(relaymap[4]):
-        dome += " Light (on)   "
+        peri += " on  / "
     else:
-        dome += " Light (off)  "
+        peri += " off / "
     if not GPIO.input(relaymap[5]):
-        dome += " Telescope (on)   "
+        peri += " on  / "
     else:
-        dome += " Telescope (off)  "
+        peri += " off / "
     if not GPIO.input(relaymap[6]):
-        dome += " Camera (on)   "
+        peri += " on  / "
     else:
-        dome += " Camera (off)  "
-    statusUpdate("Dome",dome)
+        peri += " off / "
+    if servostatus == 10.:
+        peri += " open  "
+    else:
+        peri += " closed"
+
+    statusUpdate("Lights/Telescope/Camera/Cover",peri) 
 
 def statusUpdate(k, value):
     ncurses_lock.acquire()
@@ -450,7 +456,8 @@ def main(stdscr):
             'Telescope', 
             'Stellarium', 
             'Auto alignment', 
-            'Dome', 
+            'Dome movement', 
+            'Lights/Telescope/Camera/Cover', 
             'Alignment mode', 
     ] + [k for k,c in telescope_states]
     global statuswin
@@ -531,6 +538,7 @@ def main(stdscr):
                 showMessage("Servo opening telescope")
             servo = GPIO.PWM(12, 50)
             servo.start(servostatus)
+            updateDomeStatus()                    
             time.sleep(1.)
             servo.stop()
 		
