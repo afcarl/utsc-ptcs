@@ -31,17 +31,24 @@ if len(sys.argv)==2:
     N = 1
 else:
     N = int(sys.argv[2])
+    if len(sys.argv)==3:
+        iso = "3200"
+    else:
+        iso = sys.argv[3]
 
 d = time.strftime("%Y-%m-%d")
 
 start = len(glob.glob("./images/%s/full*.jpg"%d))
+    
+r = os.system("gphoto2 --set-config /main/imgsettings/imageformat=8")<<8
+if r!=0:
+    print("\033[91mProblem encountered trying to set image format.\033[0m")
 
 for i in range(start,N+start):
     if os.path.isfile("capt0000.jpg"):
         print("Deleting old image file...")
         os.system("rm -f capt0000.jpg")
     print("Configuring camera...")
-    iso = "3200"
     r = os.system("gphoto2 --set-config capture=on --set-config iso=%s"%iso)<<8
     if r!=0:
         print("\033[91mProblem encountered trying to set ISO.\033[0m")
@@ -49,12 +56,16 @@ for i in range(start,N+start):
     if r!=0:
         print("\033[91mProblem encountered trying to set shutterspeed.\033[0m")
     print("Taking a %s second exposure..."%S)
-    r = os.system("gphoto2 --set-config eosremoterelease=Immediate --wait-event=%ss --set-config eosremoterelease=\"Release Full\" --wait-event-and-download=2s | sed -n '/UNKNOWN/!p'"%S)
+    r = os.system("gphoto2 --set-config eosremoterelease=Immediate --wait-event=%ss --set-config eosremoterelease=\"Release Full\" --wait-event-and-download=5s | sed -n '/UNKNOWN/!p'"%S)
     if r!=0:
         print("\033[91mProblem encountered trying to take image. Make sure camera is connected and not in use.\033[0m")
         
     print("\033[92mImage captured.\033[0m")
     os.system("mkdir -p images/%s" % d)
     os.system("cp capt0000.jpg images/%s/full_%05d_iso%s_shutter%ss.jpg"%(d,i,iso,S))
+    os.system("cp capt0001.cr2 images/%s/full_%05d_iso%s_shutter%ss.cr2"%(d,i,iso,S))
     os.system("convert -resize 2000x1333 capt0000.jpg images/%s/medium_%05d_iso%s_shutter%ss.jpg"%(d,i,iso,S))
     os.system("convert -resize 800x533 capt0000.jpg images/%s/small_%05d_iso%s_shutter%ss.jpg"%(d,i,iso,S))
+    os.system("rm capt0001.cr2")
+    os.system("rm capt0000.jpg")
+
