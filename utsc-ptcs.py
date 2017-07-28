@@ -36,6 +36,10 @@ try:
     import RPi.GPIO as GPIO; 
     GPIO.setwarnings(False)
     GPIO.setmode(GPIO.BOARD); 
+    # Servo
+    GPIO.setup(12, GPIO.OUT)
+    servostatus = 5.
+    # Relays
     for n,pin in enumerate(relaymap):
         GPIO.setup(pin, GPIO.OUT)
         if n<4: # only turn off dome, not other equipment
@@ -56,21 +60,27 @@ def updateDomeStatus():
     elif not GPIO.input(relaymap[3]):
         dome = "vvv"
 
-    dome = "Movement ("+dome+")  "
+    statusUpdate("Dome movement",dome)
 
+    peri = ""
     if not GPIO.input(relaymap[4]):
-        dome += " Light (on)   "
+        peri += " on  / "
     else:
-        dome += " Light (off)  "
+        peri += " off / "
     if not GPIO.input(relaymap[5]):
-        dome += " Telescope (on)   "
+        peri += " on  / "
     else:
-        dome += " Telescope (off)  "
+        peri += " off / "
     if not GPIO.input(relaymap[6]):
-        dome += " Camera (on)   "
+        peri += " on  / "
     else:
-        dome += " Camera (off)  "
-    statusUpdate("Dome",dome)
+        peri += " off / "
+    if servostatus == 10.:
+        peri += " open  "
+    else:
+        peri += " closed"
+
+    statusUpdate("Lights/Telescope/Camera/Cover",peri) 
 
 def statusUpdate(k, value):
     ncurses_lock.acquire()
@@ -115,7 +125,8 @@ def showMessage(value):
     messageswin.refresh()
     ncurses_lock.release()
     
-vlcproc = None
+vlcproc1 = None
+vlcproc2 = None
 import psutil
 
 def kill(proc_pid):
@@ -296,7 +307,7 @@ def stellarium_communication():
                 stellarium_socket.settimeout(0)
                 stellarium_socket.bind(("127.0.0.1", port))
                 stellarium_socket.listen(1)
-                statusUpdate("Stellarium", "Server waiting for connection on port %d."%port)
+                statusUpdate("Stellarium", "Listening on port %d."%port)
             except socket.error as e:
                 statusUpdate("Stellarium", "Socket error (%s)"%e.strerror)
                 stellarium_socket = None
@@ -354,7 +365,7 @@ def autoalignment_communication():
                 autoalignment_socket.settimeout(0)
                 autoalignment_socket.bind(("127.0.0.1", port))
                 autoalignment_socket.listen(1)
-                statusUpdate("Auto alignment", "Server waiting for connection on port %d."%port)
+                statusUpdate("Auto alignment", "Listening on port %d."%port)
             except socket.error as e:
                 statusUpdate("Auto alignment", "Socket error (%s)"%e.strerror)
                 autoalignment_socket = None
@@ -363,12 +374,15 @@ def autoalignment_communication():
 
 
 def finish():
-    if vlcproc is not None:
-        os.system("kill -9 %d" % vlcproc.pid)
+    if vlcproc1 is not None:
+        os.system("kill -9 %d" % vlcproc1.pid)
+    if vlcproc2 is not None:
+        os.system("kill -9 %d" % vlcproc2.pid)
     print("Finishing...")
     for n,pin in enumerate(relaymap):
         if n<4: # only turn off dome, not other equipment
             GPIO.output(pin, 1)
+    GPIO.cleanup()
     global stop_threads
     stop_threads = True
     if stellarium_socket is not None:
@@ -420,9 +434,9 @@ def main(stdscr):
     stdscr.refresh()
 
     menuitems = [
-            "e/w/g              - Toggle between manual align (East/West) and GoTo",
+            "e/w/g              - Manual align (East/West) / GoTo",
             "Left/Right/Up/Down - Control dome",
-            "1/2/3              - Control peripherals (light/telescope/camera) ",
+            "1/2/3/4            - Control light/telescope/camera/cover",
             "v                  - Start video stream",
             "q                  - Exit",
             ]
@@ -442,7 +456,8 @@ def main(stdscr):
             'Telescope', 
             'Stellarium', 
             'Auto alignment', 
-            'Dome', 
+            'Dome movement', 
+            'Lights/Telescope/Camera/Cover', 
             'Alignment mode', 
     ] + [k for k,c in telescope_states]
     global statuswin
@@ -513,6 +528,20 @@ def main(stdscr):
                 GPIO.output(relaymap[3], not GPIO.input(relaymap[3]))
                 updateDomeStatus()                    
                 lastkey = datetime.datetime.now()
+        elif c == ord('4'):
+            global servostatus
+            if servostatus == 10.:
+                servostatus = 4.75
+                showMessage("Servo closing telescope")
+            else:
+                servostatus = 10.
+                showMessage("Servo opening telescope")
+            servo = GPIO.PWM(12, 50)
+            servo.start(servostatus)
+            updateDomeStatus()                    
+            time.sleep(1.)
+            servo.stop()
+		
         elif c == ord('1'):
             current = GPIO.input(relaymap[4])
             GPIO.output(relaymap[4], not current)
@@ -540,17 +569,28 @@ def main(stdscr):
             alignment_mode = "goto"
             statusUpdate("Alignment mode", "GoTo next coordinates.")
         elif c == ord('v'):
-            global vlcproc
-            if vlcproc is not None:
-                showMessage("Killing vlc video stream (pid=%d)."%vlcproc.pid)
-                os.system("kill -9 %d" % vlcproc.pid)
-                vlcproc = None
+            global vlcproc1
+            if vlcproc1 is not None:
+                showMessage("Killing vlc video stream (pid=%d)."%vlcproc1.pid)
+                os.system("kill -9 %d" % vlcproc1.pid)
+                vlcproc1 = None
             os.system("v4l2-ctl --set-fmt-video=width=160,height=120")
 
             cmd = ["/usr/bin/cvlc", "--no-audio", "v4l2:///dev/video0", "--v4l2-width", "160", "--v4l2-height", "120", "--v4l2-chroma", "MJPG", "--v4l2-hflip", "1", "--v4l2-vflip", "1", "--sout", "#standard{access=http{mime=multipart/x-mixed-replace;boundary=--7b3cc56e5f51db803f790dad720ed50a},mux=mpjpeg,dst=:8080/}", "-I", "dummy", "vlc://quit"]
             FNULL = open(os.devnull, 'w')
-            vlcproc = subprocess.Popen(cmd, stdout=FNULL, stderr=subprocess.STDOUT, shell=False)
-            showMessage("Starting vlc video stream (pid=%d)."%vlcproc.pid)
+            vlcproc1 = subprocess.Popen(cmd, stdout=FNULL, stderr=subprocess.STDOUT, shell=False)
+            showMessage("Starting vlc video stream (pid=%d)."%vlcproc1.pid)
+            global vlcproc2
+            if vlcproc2 is not None:
+                showMessage("Killing vlc video stream (pid=%d)."%vlcproc2.pid)
+                os.system("kill -9 %d" % vlcproc2.pid)
+                vlcproc2 = None
+            os.system("v4l2-ctl --set-fmt-video=width=160,height=120")
+
+            cmd = ["/usr/bin/cvlc", "--no-audio", "v4l2:///dev/video1", "--v4l2-width", "160", "--v4l2-height", "120", "--v4l2-chroma", "MJPG", "--v4l2-hflip", "1", "--v4l2-vflip", "1", "--sout", "#standard{access=http{mime=multipart/x-mixed-replace;boundary=--7b3cc56e5f51db803f790dad720ed50a},mux=mpjpeg,dst=:8081/}", "-I", "dummy", "vlc://quit"]
+            FNULL = open(os.devnull, 'w')
+            vlcproc2 = subprocess.Popen(cmd, stdout=FNULL, stderr=subprocess.STDOUT, shell=False)
+            showMessage("Starting vlc video stream (pid=%d)."%vlcproc2.pid)
 
     
 
