@@ -17,6 +17,9 @@
 # You should have received a copy of the GNU General Public License
 # along with UTSC | PCTS.  If not, see <http://www.gnu.org/licenses/>.
 #
+#
+#  killall gvfsd-gphoto2
+
 import os
 import time
 import glob
@@ -24,7 +27,7 @@ import client
 import socket
 import sys
 if len(sys.argv)<2:
-    print("Usage ./takeimages.py SEC NUM")
+    print("Usage ./takeimages.py SEC NUM ISO")
     exit(-1)
 S = sys.argv[1]
 if len(sys.argv)==2:
@@ -67,5 +70,5 @@ for i in range(start,N+start):
     os.system("convert -resize 2000x1333 capt0000.jpg images/%s/medium_%05d_iso%s_shutter%ss.jpg"%(d,i,iso,S))
     os.system("convert -resize 800x533 capt0000.jpg images/%s/small_%05d_iso%s_shutter%ss.jpg"%(d,i,iso,S))
     os.system("rm capt0001.cr2")
-    os.system("rm capt0000.jpg")
+    os.system("mv capt0000.jpg latest.jpg")
 
