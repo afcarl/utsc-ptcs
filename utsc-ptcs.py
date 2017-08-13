@@ -31,9 +31,16 @@ import client
 import threading
 import subprocess
 from conversions import *
+focusstepperinc = 10
+try:
+    with open(".focussteppercount","r") as f:
+        focussteppercount = int(f.read())
+except:
+    focussteppercount = 0
+
 relaymap = [5,3,11,7,13,15,19]
 try:
-    import RPi.GPIO as GPIO; 
+    import RPi.GPIO as GPIO;
     GPIO.setwarnings(False)
     GPIO.setmode(GPIO.BOARD); 
     # Servo
@@ -436,7 +443,7 @@ def main(stdscr):
     menuitems = [
             "e/w/g              - Manual align (East/West) / GoTo",
             "Left/Right/Up/Down - Control dome",
-            "1/2/3/4            - Control light/telescope/camera/cover",
+            "1/2/3/4/           - light/telescope/camera/cover",
             "v                  - Start video stream",
             "q                  - Exit",
             ]
@@ -459,6 +466,7 @@ def main(stdscr):
             'Dome movement', 
             'Lights/Telescope/Camera/Cover', 
             'Alignment mode', 
+            'Stepper (f/F)', 
     ] + [k for k,c in telescope_states]
     global statuswin
     statuswin = curses.newwin(len(statusitems)+2,curses.COLS-3,menuwin.getbegyx()[0]+menuwin.getmaxyx()[0],2)     
@@ -470,6 +478,8 @@ def main(stdscr):
         statuswin.addstr(1+index, 2, ("%%-%ds: "%(statustitlelen+1)) % key)           
     updateDomeStatus()                    
     statusUpdate("Alignment mode", "GoTo next coordinates.")
+    global focussteppercount
+    statusUpdate("Stepper (f/F)", "%d"%focussteppercount)
    
     global messageswin
     messageswin = curses.newwin(messagesN+2,curses.COLS-3,statuswin.getbegyx()[0]+statuswin.getmaxyx()[0],2)     
@@ -568,6 +578,14 @@ def main(stdscr):
         elif c == ord('g'):
             alignment_mode = "goto"
             statusUpdate("Alignment mode", "GoTo next coordinates.")
+        elif c == ord('f') or c == ord("F"):
+            if c == ord('f'):
+                focussteppercount += focusstepperinc
+            else:
+                focussteppercount -= focusstepperinc
+            with open(".focussteppercount","w") as f:
+                f.write("%d"%focussteppercount)
+            statusUpdate("Stepper (f/F)", "%d" % focussteppercount)
         elif c == ord('v'):
             global vlcproc1
             if vlcproc1 is not None:

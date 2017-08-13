@@ -1,2 +1,4 @@
 *.pyc
 apikey.txt
+.focussteppercount
+*.swp
