@@ -31,7 +31,7 @@ import client
 import threading
 import subprocess
 from conversions import *
-focusstepperinc = 10
+focusstepperinc = 4
 try:
     with open(".focussteppercount","r") as f:
         focussteppercount = int(f.read())
@@ -46,6 +46,15 @@ try:
     # Servo
     GPIO.setup(12, GPIO.OUT)
     servostatus = 5.
+    # Stepper
+    GPIO.setup(29, GPIO.OUT)
+    GPIO.setup(31, GPIO.OUT)
+    GPIO.setup(33, GPIO.OUT)
+    GPIO.setup(37, GPIO.OUT)
+    GPIO.output(29, 0)
+    GPIO.output(31, 0)
+    GPIO.output(33, 0)
+    GPIO.output(37, 0)
     # Relays
     for n,pin in enumerate(relaymap):
         GPIO.setup(pin, GPIO.OUT)
@@ -491,9 +500,9 @@ def main(stdscr):
     global telescope_port
     if os.uname()[0]=="Darwin":
         port_name = '/dev/tty.usbserial'
-        #port_name = '/dev/ttyAMA0'
     else:
-        port_name = '/dev/ttyS0'
+        #port_name = '/dev/ttyS0'
+        port_name = '/dev/ttyAMA0'
     try:
         telescope_port = serial.Serial(port_name, 19200, timeout = 0.01) 
         statusUpdate('Telescope', "Opened "+port_name)                    
@@ -580,12 +589,50 @@ def main(stdscr):
             statusUpdate("Alignment mode", "GoTo next coordinates.")
         elif c == ord('f') or c == ord("F"):
             if c == ord('f'):
-                focussteppercount += focusstepperinc
+                stepperdir = 1
             else:
-                focussteppercount -= focusstepperinc
+                stepperdir = -1
+            for si in range(focusstepperinc):
+                    if stepperdir >0:
+                        GPIO.output(29, 0) # A
+                        GPIO.output(31, 1) # A-
+                        GPIO.output(33, 0) # B
+                        GPIO.output(37, 1) # B-
+                    else:
+                        GPIO.output(29, 1)
+                        GPIO.output(31, 0)
+                        GPIO.output(33, 1)
+                        GPIO.output(37, 0)
+                    time.sleep(0.01) # sleep 1 second
+                    GPIO.output(29, 1)
+                    GPIO.output(31, 0)
+                    GPIO.output(33, 0)
+                    GPIO.output(37, 1)
+                    time.sleep(0.01) # sleep 1 second
+                    if stepperdir<0:
+                        GPIO.output(29, 0) # A
+                        GPIO.output(31, 1) # A-
+                        GPIO.output(33, 0) # B
+                        GPIO.output(37, 1) # B-
+                    else:
+                        GPIO.output(29, 1)
+                        GPIO.output(31, 0)
+                        GPIO.output(33, 1)
+                        GPIO.output(37, 0)
+                    time.sleep(0.01) # sleep 1 second 
+                    GPIO.output(29, 0)
+                    GPIO.output(31, 1)
+                    GPIO.output(33, 1)
+                    GPIO.output(37, 0)
+                    time.sleep(0.01) # sleep 1 second 
+            GPIO.output(29, 0)
+            GPIO.output(31, 0)
+            GPIO.output(33, 0)
+            GPIO.output(37, 0)
+            focussteppercount += focusstepperinc*stepperdir
+            statusUpdate("Stepper (f/F)", "%d" % focussteppercount)
             with open(".focussteppercount","w") as f:
                 f.write("%d"%focussteppercount)
-            statusUpdate("Stepper (f/F)", "%d" % focussteppercount)
         elif c == ord('v'):
             global vlcproc1
             if vlcproc1 is not None:
