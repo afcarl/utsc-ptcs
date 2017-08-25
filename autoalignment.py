@@ -18,9 +18,15 @@
 # along with UTSC | PCTS.  If not, see <http://www.gnu.org/licenses/>.
 #
 import os
+import sys
 import time
 import client
 import socket
+
+if len(sys.argv)==1:
+    sec = 10
+else:
+    sec = int(sys.argv[1])
 
 with open('apikey.txt', 'r') as content_file:
     apikey = content_file.read().strip()
@@ -54,7 +60,7 @@ else:
 if os.path.isfile("latest.jpg"):
     print("Deleting old image file...")
     os.system("rm -f latest.jpg")
-r = os.system("./takeimages.py 10 1 3200")<<8
+r = os.system("./takeimages.py %d 1 3200"%sec)<<8
 if r!=0:
     print("\033[91mProblem encountered trying to take image. Make sure camera is connected and not in use.\033[0m")
     quit(0)
