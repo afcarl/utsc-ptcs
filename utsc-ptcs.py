@@ -58,34 +58,40 @@ from curses import wrapper
 
 def updateDomeStatus():
     dome = "---"
-    if not GPIO.input(relaymap[0]):
-        dome = "<<<"
-    elif not GPIO.input(relaymap[1]):
-        dome = ">>>"
-    elif not GPIO.input(relaymap[2]):
-        dome = "^^^"
-    elif not GPIO.input(relaymap[3]):
-        dome = "vvv"
+    try:
+        if not GPIO.input(relaymap[0]):
+            dome = "<<<"
+        elif not GPIO.input(relaymap[1]):
+            dome = ">>>"
+        elif not GPIO.input(relaymap[2]):
+            dome = "^^^"
+        elif not GPIO.input(relaymap[3]):
+            dome = "vvv"
+    except:
+        pass
 
     statusUpdate("Dome movement",dome)
 
     peri = ""
-    if not GPIO.input(relaymap[4]):
-        peri += " on  / "
-    else:
-        peri += " off / "
-    if not GPIO.input(relaymap[5]):
-        peri += " on  / "
-    else:
-        peri += " off / "
-    if not GPIO.input(relaymap[6]):
-        peri += " on  / "
-    else:
-        peri += " off / "
-    if servostatus == 10.:
-        peri += " open  "
-    else:
-        peri += " closed"
+    try:
+        if not GPIO.input(relaymap[4]):
+            peri += " on  / "
+        else:
+            peri += " off / "
+        if not GPIO.input(relaymap[5]):
+            peri += " on  / "
+        else:
+            peri += " off / "
+        if not GPIO.input(relaymap[6]):
+            peri += " on  / "
+        else:
+            peri += " off / "
+        if servostatus == 10.:
+            peri += " open  "
+        else:
+            peri += " closed"
+    except:
+        pass
 
     statusUpdate("Lights/Telescope/Camera/Cover",peri) 
 
@@ -386,10 +392,13 @@ def finish():
     if vlcproc2 is not None:
         os.system("kill -9 %d" % vlcproc2.pid)
     print("Finishing...")
-    for n,pin in enumerate(relaymap):
-        if n<4: # only turn off dome, not other equipment
-            GPIO.output(pin, 1)
-    GPIO.cleanup()
+    try:
+        for n,pin in enumerate(relaymap):
+            if n<4: # only turn off dome, not other equipment
+                GPIO.output(pin, 1)
+        GPIO.cleanup()
+    except:
+        pass
     global stop_threads
     stop_threads = True
     if stellarium_socket is not None:
