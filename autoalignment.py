@@ -20,7 +20,6 @@
 import os
 import sys
 import time
-import client
 import socket
 
 if len(sys.argv)==1:
@@ -79,17 +78,20 @@ os.system("convert -resize 800x533 latest.jpg images/astrometry/latest_small.jpg
 os.system("cd images/astrometry && /usr/local/astrometry/bin/solve-field latest_small.jpg --overwrite -L 30 -H 50 -u \"arcminwidth\" --parity neg --cpulimit 10 --crpix-center")
 
 ra,dec = None, None
-with open('images/astrometry/latest_small.wcs', 'r') as f:
-    content = f.read()
-    while len(content):
-        line = content [0:80]
-        content = content[80:]
-        s = line.split("=")
-        if len(s) ==2:
-            if s[0] == "CRVAL1  ":
-                ra = s[1].split("/")[0].strip()
-            if s[0] == "CRVAL2  ":
-                dec = s[1].split("/")[0].strip()
+try:
+    with open('images/astrometry/latest_small.wcs', 'r') as f:
+        content = f.read()
+        while len(content):
+            line = content [0:80]
+            content = content[80:]
+            s = line.split("=")
+            if len(s) ==2:
+                if s[0] == "CRVAL1  ":
+                    ra = s[1].split("/")[0].strip()
+                if s[0] == "CRVAL2  ":
+                    dec = s[1].split("/")[0].strip()
+except:
+    pass
 if ra != None and dec != None:
     print("\033[92mCalibration successful.\033[0m")
     ra_string, dec_string = ra_raw2str(float(ra)/360.*4294967296.), dec_raw2str(float(dec)/90.*1073741824.)
@@ -116,17 +118,3 @@ else:
     print("\033[91mCalibration failed.\033[0m")
     quit(0)
 
-
-#                calibrationDone = True
-#            else:
-#                print(got)
-#                print("\033[91mCalibration failed.\033[0m")
-#                quit(0)
-#        else:
-#            print("Waiting in queue...")
-#
-#
-#except KeyboardInterrupt:
-#    print("\033[91mKeyboard interrupt.\033[0m")
-#    quit(0)
-#print("\033[92mAll done. Exiting.\033[0m")
