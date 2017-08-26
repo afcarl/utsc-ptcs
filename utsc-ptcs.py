@@ -468,7 +468,6 @@ def main(stdscr):
             "e/w/g              - Manual align (East/West) / GoTo",
             "Left/Right/Up/Down - Control dome",
             "1/2/3/4/           - light/telescope/camera/cover",
-            "v                  - Start video stream",
             "q                  - Exit",
             ]
     global menuwin
@@ -648,30 +647,6 @@ def main(stdscr):
             statusUpdate("Stepper (f/F)", "%d" % focussteppercount)
             with open(".focussteppercount","w") as f:
                 f.write("%d"%focussteppercount)
-        elif c == ord('v'):
-            global vlcproc1
-            if vlcproc1 is not None:
-                showMessage("Killing vlc video stream (pid=%d)."%vlcproc1.pid)
-                os.system("kill -9 %d" % vlcproc1.pid)
-                vlcproc1 = None
-            os.system("v4l2-ctl --set-fmt-video=width=160,height=120")
-
-            cmd = ["/usr/bin/cvlc", "--no-audio", "v4l2:///dev/video0", "--v4l2-width", "160", "--v4l2-height", "120", "--v4l2-chroma", "MJPG", "--v4l2-hflip", "1", "--v4l2-vflip", "1", "--sout", "#standard{access=http{mime=multipart/x-mixed-replace;boundary=--7b3cc56e5f51db803f790dad720ed50a},mux=mpjpeg,dst=:8080/}", "-I", "dummy", "vlc://quit"]
-            FNULL = open(os.devnull, 'w')
-            vlcproc1 = subprocess.Popen(cmd, stdout=FNULL, stderr=subprocess.STDOUT, shell=False)
-            showMessage("Starting vlc video stream (pid=%d)."%vlcproc1.pid)
-            global vlcproc2
-            if vlcproc2 is not None:
-                showMessage("Killing vlc video stream (pid=%d)."%vlcproc2.pid)
-                os.system("kill -9 %d" % vlcproc2.pid)
-                vlcproc2 = None
-            os.system("v4l2-ctl --set-fmt-video=width=160,height=120")
-
-            cmd = ["/usr/bin/cvlc", "--no-audio", "v4l2:///dev/video1", "--v4l2-width", "160", "--v4l2-height", "120", "--v4l2-chroma", "MJPG", "--v4l2-hflip", "1", "--v4l2-vflip", "1", "--sout", "#standard{access=http{mime=multipart/x-mixed-replace;boundary=--7b3cc56e5f51db803f790dad720ed50a},mux=mpjpeg,dst=:8081/}", "-I", "dummy", "vlc://quit"]
-            FNULL = open(os.devnull, 'w')
-            vlcproc2 = subprocess.Popen(cmd, stdout=FNULL, stderr=subprocess.STDOUT, shell=False)
-            showMessage("Starting vlc video stream (pid=%d)."%vlcproc2.pid)
-
     
 
 wrapper(main)
