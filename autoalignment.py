@@ -26,10 +26,14 @@ import socket
 if len(sys.argv)==1:
     sec = 10
 else:
-    sec = int(sys.argv[1])
+    try:
+        sec = int(sys.argv[1])
+    except:
+        # expect test image
+        sec = None
+        testimage = sys.argv[1]
 
-with open('apikey.txt', 'r') as content_file:
-    apikey = content_file.read().strip()
+
 
 ## Conversion functions
 def dec_raw2str(raw):
@@ -56,74 +60,73 @@ elif alignment_side == "w":
 else:
     raise ValueError("Alignmentside not valid")
 
-
-if os.path.isfile("latest.jpg"):
-    print("Deleting old image file...")
-    os.system("rm -f latest.jpg")
-r = os.system("./takeimages.py %d 1 3200"%sec)<<8
-if r!=0:
-    print("\033[91mProblem encountered trying to take image. Make sure camera is connected and not in use.\033[0m")
-    quit(0)
-time.sleep(1)
+if sec is not None:
+    # Take image
+    if os.path.isfile("latest.jpg"):
+        print("Deleting old image file...")
+        os.system("rm -f latest.jpg")
+    r = os.system("./takeimages.py %d 1 3200"%sec)<<8
+    if r!=0:
+        print("\033[91mProblem encountered trying to take image. Make sure camera is connected and not in use.\033[0m")
+        quit(0)
+    time.sleep(1)
     
-print("\033[92mImage captured. Uploading to astrometry.net...\033[0m")
-client = client.Client()
-client.login(apikey)
-upres = client.upload("./latest.jpg")
-subid = upres["subid"]
-print("\033[92mImage upload successful. Submission id is %s. Waiting for result...\033[0m" % subid)
-try:
-    calibrationDone = False
-    while calibrationDone == False:
-        time.sleep(5)
+    print("\033[92mImage captured.\033[0m")
+else:
+    os.system("cp %s latest.jpg" % testimage)
+os.system("rm images/astrometry/*.*")
+os.system("convert -resize 800x533 latest.jpg images/astrometry/latest_small.jpg")
+os.system("cd images/astrometry && /usr/local/astrometry/bin/solve-field latest_small.jpg --overwrite -L 30 -H 50 -u \"arcminwidth\" --parity neg --cpulimit 10 --crpix-center")
 
-        res = client.send_request('submissions/%s' %subid)
-        jobs = res.get('jobs',[])
-        solved = None
-        if len(jobs):
-            for j in jobs:
-                if j is not None:
-                    break
-            if j is not None:
-                solved = j
+ra,dec = None, None
+with open('images/astrometry/latest_small.wcs', 'r') as f:
+    content = f.read()
+    while len(content):
+        line = content [0:80]
+        content = content[80:]
+        s = line.split("=")
+        if len(s) ==2:
+            if s[0] == "CRVAL1  ":
+                ra = s[1].split("/")[0].strip()
+            if s[0] == "CRVAL2  ":
+                dec = s[1].split("/")[0].strip()
+if ra != None and dec != None:
+    print("\033[92mCalibration successful.\033[0m")
+    ra_string, dec_string = ra_raw2str(float(ra)/360.*4294967296.), dec_raw2str(float(dec)/90.*1073741824.)
+    print("Got: %s %s."% (ra_string, dec_string))
 
-        if solved is not None:
-            res = client.send_request('jobs/%s' %solved)
-            got = res.get("status") 
-            if got == 'solving':
-                print("Now solving...")
-            elif got == 'success':
-                res = client.send_request('jobs/%s/calibration' %solved)
-                print("\033[92mCalibration successful.\033[0m")
-                ra_string, dec_string = ra_raw2str(float(res["ra"])/360.*4294967296.), dec_raw2str(float(res["dec"])/90.*1073741824.)
-                print("Got: %s %s."% (ra_string, dec_string))
+    print("Opening ssh tunnel to telescope control system...")
+    os.system("ssh -L 10002:localhost:10002 observer@rein009.utsc.utoronto.ca sleep 10  & ")
+    time.sleep(1)
+    print("Opening connection to telescope control system...")
 
-                print("Opening ssh tunnel to telescope control system...")
-                os.system("ssh -L 10002:localhost:10002 observer@rein009.utsc.utoronto.ca sleep 10  & ")
-                time.sleep(1)
-                print("Opening connection to telescope control system...")
+    try:
+        send_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        send_socket.connect(("localhost", 10002))
+    except Exception as e:
+        print(e)
+        print("\033[91mCannot open connection to telescope control system.\033[0m")
+        quit(0)
 
-                try:
-                    send_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    send_socket.connect(("localhost", 10002))
-                except Exception as e:
-                    print(e)
-                    print("\033[91mCannot open connection to telescope control system.\033[0m")
-                    quit(0)
+    print("Sending calibration data to telescope control system...")
+    send_socket.send(alignment_side+";"+ra_string+";"+dec_string)
+    time.sleep(1)
 
-                print("Sending calibration data to telescope control system...")
-                send_socket.send(alignment_side+";"+ra_string+";"+dec_string)
-                time.sleep(1)
-                calibrationDone = True
-            else:
-                print(got)
-                print("\033[91mCalibration failed.\033[0m")
-                quit(0)
-        else:
-            print("Waiting in queue...")
-
-
-except KeyboardInterrupt:
-    print("\033[91mKeyboard interrupt.\033[0m")
+else:
+    print("\033[91mCalibration failed.\033[0m")
     quit(0)
-print("\033[92mAll done. Exiting.\033[0m")
+
+
+#                calibrationDone = True
+#            else:
+#                print(got)
+#                print("\033[91mCalibration failed.\033[0m")
+#                quit(0)
+#        else:
+#            print("Waiting in queue...")
+#
+#
+#except KeyboardInterrupt:
+#    print("\033[91mKeyboard interrupt.\033[0m")
+#    quit(0)
+#print("\033[92mAll done. Exiting.\033[0m")
