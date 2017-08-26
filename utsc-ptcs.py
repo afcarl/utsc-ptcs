@@ -110,7 +110,10 @@ def statusUpdate(k, value):
         if key == k:
             statuswin.move(1+index, 5+statustitlelen);   
             statuswin.clrtoeol(); 
-            statuswin.addstr(1+index, 5+statustitlelen, value.replace('\n', ' '))           
+            try:
+                statuswin.addstr(1+index, 5+statustitlelen, value.replace('\n', ' '))           
+            except:
+                statuswin.addstr(1+index, 5+statustitlelen, "Cannot display string")           
     statuswin.border(0)
     statuswin.addstr(0, 1, " Status ")                    
     statuswin.refresh()
@@ -142,7 +145,10 @@ def showMessage(value):
     for index, key in enumerate(reversed(messages)):      
         messageswin.move(1+index, 2);   
         messageswin.clrtoeol(); 
-        messageswin.addstr(1+index, 2, "%4d : %s" % (messagesi+len(messages)-index-1,key))           
+        try:
+            messageswin.addstr(1+index, 2, "%4d : %s" % (messagesi+len(messages)-index-1,key))           
+        except:
+            messageswin.addstr(1+index, 2, "%4d : %s" % (messagesi+len(messages)-index-1,"Cannot display string"))           
     messageswin.border(0)
     messageswin.refresh()
     ncurses_lock.release()
