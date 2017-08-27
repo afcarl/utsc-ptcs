@@ -30,6 +30,8 @@ import signal
 import client
 import threading
 import subprocess
+import ephem
+toronto = ephem.city('Toronto')
 from conversions import *
 focusstepperinc = 4
 try:
@@ -480,7 +482,7 @@ def main(stdscr):
    
     global statusitems
     statusitems = [
-            'Time',
+            'Time UTC/siderial',
             'Telescope', 
             'Dome movement', 
             'Lights/Scope/Camera/Cover', 
@@ -588,7 +590,9 @@ def main(stdscr):
             updateDomeStatus()                    
         elif c==-1:
             # No user interaction. 
-            statusUpdate('Time', time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()))                    
+            toronto.date = ephem.now()
+            siderial = str(toronto.sidereal_time())
+            statusUpdate('Time UTC/siderial', time.strftime("%H:%M:%S", time.gmtime())+" / "+siderial)                    
             # Wait for next update
             time.sleep(0.05)
         elif c == ord('q'):
