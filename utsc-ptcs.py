@@ -165,12 +165,12 @@ def kill(proc_pid):
 
 telescope_port = None    
 telescope_states= [
-    ['Alignment state',              '!AGas;'],  
-    ['Alignment side',               '!AGai;'],
-    ['Current right ascension',      '!CGra;'],
-    ['Current declination',          '!CGde;'],
-    ['Target right ascension',       '!CGtr;'],
-    ['Target declination',           '!CGtd;']
+    ['',  '!AGas;'],  
+    ['',  '!AGai;'],
+    ['',  '!CGra;'],
+    ['',  '!CGde;'],
+    ['',  '!CGtr;'],
+    ['',  '!CGtd;']
 ]
 
 special = [
@@ -231,6 +231,7 @@ ncurses_lock = threading.Lock()
 telescope_lock = threading.Lock()
 def telescope_communication():
     global telescope_port
+    global telescope_states
     while stop_threads==False:
         if telescope_port is not None:
             ra, dec = None, None
@@ -239,7 +240,7 @@ def telescope_communication():
             if len(data)>0:
                 telescope_response(data)
             for (index,element) in enumerate(telescope_states):
-                key, command = element
+                value, command = element
                 ret = telescope_cmd(command,hideResponse=True) 
                 atcl_asynch = ret.split(chr(0x9F))
                 if len(atcl_asynch)>1:
@@ -266,8 +267,11 @@ def telescope_communication():
                 if "Internal error" in ret:
                     print(ret)
                     ret = "N/A"
-                statusUpdate(key, ret)
+                telescope_states[index][0] = ret
             telescope_lock.release()
+            statusUpdate("Alignment state/side", telescope_states[0][0]+" / "+telescope_states[1][0])
+            statusUpdate("Current coordinates", telescope_states[2][0]+"  "+telescope_states[3][0])
+            statusUpdate("Target coordinates", telescope_states[4][0]+"  "+telescope_states[5][0])
             if ra is not None and dec is not None:
                 if stellarium_socket is not None:
                     if stellarium_conn is not None:
@@ -460,9 +464,9 @@ def main(stdscr):
     stdscr.refresh()
 
     menuitems = [
-            "e/w/g/q            - Manual align East/West / GoTo / Quit",
-            "Left/Right/Up/Down - Control dome",
-            "1/2/3/4            - light/telescope/camera/cover",
+            "e/w/g/q             : Manual align East/West / GoTo / Quit",
+            "Left/Right/Up/Down  : Control dome",
+            "1/2/3/4             : light/telescope/camera/cover",
             ]
     global menuwin
     menuwin = curses.newwin(len(menuitems)+2,curses.COLS-3,4,2)                                  
@@ -482,7 +486,10 @@ def main(stdscr):
             'Lights/Scope/Camera/Cover', 
             'Alignment mode', 
             'Stepper (f/F)', 
-    ] + [k for k,c in telescope_states]
+            'Alignment state/side',
+            'Current coordinates',
+            'Target coordinates',
+    ] 
     global statuswin
     statuswin = curses.newwin(len(statusitems)+2,curses.COLS-3,menuwin.getbegyx()[0]+menuwin.getmaxyx()[0],2)     
     statuswin.border(0)
