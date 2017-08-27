@@ -29,14 +29,12 @@ import sys
 if len(sys.argv)<2:
     print("Usage ./takeimages.py SEC NUM ISO")
     exit(-1)
+iso = "3200"
+N = 1
 S = sys.argv[1]
-if len(sys.argv)==2:
-    N = 1
-else:
+if len(sys.argv)>2:
     N = int(sys.argv[2])
-    if len(sys.argv)==3:
-        iso = "3200"
-    else:
+    if len(sys.argv)>3:
         iso = sys.argv[3]
 
 d = time.strftime("%Y-%m-%d")
