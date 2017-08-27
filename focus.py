@@ -21,6 +21,7 @@ import os
 import sys
 import time
 import socket
+timestamp = int(time.time())
 
 if len(sys.argv)==4:
     sec = int(sys.argv[1])
@@ -33,6 +34,50 @@ else:
     print("                               ^-- trial in each direction")
     print("                                   total = 4 * FOCUSN")
     quit(0)
+
+focushtml = """
+<html>
+<head>
+    <script>
+        var cur = 0;
+        var images = ["IMAGES"];
+        function next(inc) {
+            cur = cur + inc;
+            if (cur >= images.length){
+                cur = 0;
+            }
+            if (cur < 0){
+                cur = images.length-1;
+            }
+            document.getElementById("focusimg").src=images[cur]+"?"+CACHE;
+            document.getElementById("focustext").innerHTML=(cur+1) + "/" + images.length + " : " + images[cur];
+        }
+        document.onkeydown = function(event) {
+             if (!event)
+                  event = window.event;
+             var code = event.keyCode;
+             if (event.charCode && code == 0)
+                  code = event.charCode;
+             switch(code) {
+                  case 37:
+                      next(-1);
+                      break;
+                  case 39:
+                      next(1);
+                      break;
+             }
+             event.preventDefault();
+        };
+    </script>
+</head>
+<body onload="next(0)">
+    <img src="pic0000_focus+000.jpg" id="focusimg"><br/>
+    <p id="focustext"></p><br/>
+    <button onclick="next(-1)">Prev</button>
+    <button onclick="next(1)">Next</button>
+</body>
+"""
+
         
 print("Opening ssh tunnel to telescope control system...")
 os.system("ssh -L 10002:localhost:10002 observer@rein009.utsc.utoronto.ca sleep 10  & ")
@@ -48,6 +93,7 @@ os.system("rm images/focus/*.*")
 
 focus = 0
 piccount = 0
+images = []
 for direction in [1, -1, -1, 1]:
     for i in range(n):
         print("Taking image %d/%d."%(piccount+1,n*4))
@@ -56,13 +102,15 @@ for direction in [1, -1, -1, 1]:
             print("\033[91mProblem encountered trying to take image. Make sure camera is connected and not in use.\033[0m")
             quit(0)
         time.sleep(0.25)
-        os.system("convert images/latest_full.jpg -gravity Center -crop 15\%%\! images/focus/pic%04d_focus%+04d.jpg"%(piccount,focus))
+        filename = "images/focus/pic%04d_focus%+04d.jpg"%(piccount,focus)
+        images.append(filename.split("/")[-1])
+        os.system("convert images/latest_full.jpg -gravity Center -crop 15\%%\! "+filename)
         send_socket.send("Focus"+";"+"%d"%(direction*inc))
         focus += direction*inc
         piccount += 1
-        time.sleep(0.5)
+        
+        with open("images/focus/focus.html","w") as f:
+            f.write((focushtml.replace("IMAGES","\", \"".join(images))).replace("CACHE","%d"%timestamp))
 
-#else:
-#    print("\033[91mCalibration failed.\033[0m")
-#quit(0)
+        time.sleep(0.5)
 
