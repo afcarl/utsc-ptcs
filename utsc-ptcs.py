@@ -371,19 +371,25 @@ def autoalignment_communication():
                         #Disconnected
                         autoalignment_conn = None
                     else:
-                        telescope_lock.acquire()
-                        time.sleep(0.01)
-                        direction, ra_string, dec_string = data.split(";")
-                        showMessage("Auto alignment coordinates received: (%s) %s %s" %(direction, ra_string, dec_string))
-                        telescope_cmd('!ASas' + direction + ';')
-                        if dec_string[-2:]=="60":
-                            dec_string = dec_string[:-2]+"59"
-                        telescope_cmd('!CStr' + ra_string + ';')
-                        telescope_cmd('!CStd' + dec_string + ';')
-                        telescope_cmd('!AFrn;')
-                        alignment_mode = "goto"
-                        statusUpdate("Alignment mode", "GoTo next coordinates.")
-                        telescope_lock.release()
+                        data_split = data.split(";")
+                        if data_split[0]=="East" or data_split[0]=="West":
+                            telescope_lock.acquire()
+                            time.sleep(0.01)
+                            direction, ra_string, dec_string = data_split
+                            showMessage("Auto alignment coordinates received: (%s) %s %s" %(direction, ra_string, dec_string))
+                            telescope_cmd('!ASas' + direction + ';')
+                            if dec_string[-2:]=="60":
+                                dec_string = dec_string[:-2]+"59"
+                            telescope_cmd('!CStr' + ra_string + ';')
+                            telescope_cmd('!CStd' + dec_string + ';')
+                            telescope_cmd('!AFrn;')
+                            alignment_mode = "goto"
+                            statusUpdate("Alignment mode", "GoTo next coordinates.")
+                            telescope_lock.release()
+                        elif data_split[0]=="Focus":
+                            showMessage("Focus:"+data_split[1])
+                        else:
+                            showMessage("Unknown command received.")
                 except socket.error as e:
                     # No data received
                     pass
