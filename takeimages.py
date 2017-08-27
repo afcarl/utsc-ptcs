@@ -66,7 +66,7 @@ for i in range(start,N+start):
     os.system("cp capt0001.cr2 images/%s/full_%05d_iso%s_shutter%ss.cr2"%(d,i,iso,S))
     os.system("convert -resize 2000x1333 capt0000.jpg images/%s/medium_%05d_iso%s_shutter%ss.jpg"%(d,i,iso,S))
     os.system("convert -resize 800x533 capt0000.jpg images/%s/small_%05d_iso%s_shutter%ss.jpg"%(d,i,iso,S))
-    os.system("rm capt0001.cr2")
+    os.system("mv capt0001.cr2 latest.cr2")
     os.system("mv capt0000.jpg latest.jpg")
     os.system("ln -f -s %s/small_%05d_iso%s_shutter%ss.jpg images/latest_small.jpg"%(d,i,iso,S))
     os.system("ln -f -s %s/medium_%05d_iso%s_shutter%ss.jpg images/latest_medium.jpg"%(d,i,iso,S))

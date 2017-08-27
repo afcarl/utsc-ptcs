@@ -1,4 +1,6 @@
 *.pyc
+latest.jpg
+images/
 apikey.txt
 .focussteppercount
 *.swp
