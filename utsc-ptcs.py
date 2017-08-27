@@ -84,25 +84,25 @@ def updateDomeStatus():
     peri = ""
     try:
         if not GPIO.input(relaymap[4]):
-            peri += " on  / "
+            peri += "on  /"
         else:
-            peri += " off / "
+            peri += "off /"
         if not GPIO.input(relaymap[5]):
-            peri += " on  / "
+            peri += " on  /"
         else:
-            peri += " off / "
+            peri += " off /"
         if not GPIO.input(relaymap[6]):
-            peri += " on  / "
+            peri += " on  /"
         else:
-            peri += " off / "
+            peri += " off /"
         if servostatus == 10.:
-            peri += " open  "
+            peri += " open"
         else:
             peri += " closed"
     except:
         pass
 
-    statusUpdate("Lights/Telescope/Camera/Cover",peri) 
+    statusUpdate("Lights/Scope/Camera/Cover",peri) 
 
 def statusUpdate(k, value):
     ncurses_lock.acquire()
@@ -293,7 +293,6 @@ def stellarium_communication():
                     stellarium_conn, addr = stellarium_socket.accept()
                     stellarium_conn.settimeout(0)
                     #socket.setblocking(0)
-                    statusUpdate("Stellarium", "Connection established from %s:%d."% addr)
                 except socket.error as e:
                     pass
             else:
@@ -304,7 +303,7 @@ def stellarium_communication():
                     if len(data)==20:   # goto command
                         data = struct.unpack('<hhQIi',data)
                         ra_string, dec_string = ra_raw2str(data[-2]), dec_raw2str(data[-1])
-                        statusUpdate("Stellarium", "Received from stellarium: %s %s" % (ra_string,dec_string))
+                        showMessage("Received from stellarium: %s %s" % (ra_string,dec_string))
                         if dec_string[-2:]=="60":
                             dec_string = dec_string[:-2]+"59"
                         telescope_lock.acquire()
@@ -319,11 +318,11 @@ def stellarium_communication():
                         telescope_lock.release()
                     elif len(data)==0:
                         # Disconnected
-                        statusUpdate("Stellarium","Disconnected. Waiting for new connection.")
+                        showMessage("Stellarium disconnected. Waiting for new connection.")
                         stellarium_conn = None
                         pass
                     else:
-                        statusUpdate("Stellarium","Unknown command received of length %d."%len(data))
+                        showMessage("Unknown command received from stellarium. Length %d."%len(data))
                 except socket.error as e:
                     # No data received.
                     pass
@@ -335,9 +334,8 @@ def stellarium_communication():
                 stellarium_socket.settimeout(0)
                 stellarium_socket.bind(("127.0.0.1", port))
                 stellarium_socket.listen(1)
-                statusUpdate("Stellarium", "Listening on port %d."%port)
             except socket.error as e:
-                statusUpdate("Stellarium", "Socket error (%s)"%e.strerror)
+                showMessage("Stellarium socket error (%s)"%e.strerror)
                 stellarium_socket = None
                 time.sleep(5)
         time.sleep(0.1)
@@ -349,14 +347,13 @@ def autoalignment_communication():
     global autoalignment_socket
     global autoalignment_conn
     while stop_threads==False:
-        # Poll socket for Stellarium
+        # Poll socket for Autoalignment
         if autoalignment_socket is not None:
             if autoalignment_conn is None:
                 try:
                     autoalignment_conn, addr = autoalignment_socket.accept()
                     autoalignment_conn.settimeout(0)
                     #socket.setblocking(0)
-                    statusUpdate("Auto alignment", "Connection established from %s:%d."% addr)
                 except socket.error as e:
                     pass
             else:
@@ -366,7 +363,6 @@ def autoalignment_communication():
                     data = autoalignment_conn.recv(2048)
                     if len(data)==0:
                         #Disconnected
-                        statusUpdate("Auto alignment","Disconnected. Waiting for new connection.")
                         autoalignment_conn = None
                     else:
                         telescope_lock.acquire()
@@ -393,9 +389,8 @@ def autoalignment_communication():
                 autoalignment_socket.settimeout(0)
                 autoalignment_socket.bind(("127.0.0.1", port))
                 autoalignment_socket.listen(1)
-                statusUpdate("Auto alignment", "Listening on port %d."%port)
             except socket.error as e:
-                statusUpdate("Auto alignment", "Socket error (%s)"%e.strerror)
+                showMessage("Auto alignment socket error (%s)"%e.strerror)
                 autoalignment_socket = None
                 time.sleep(5)
         time.sleep(0.1)
@@ -465,10 +460,9 @@ def main(stdscr):
     stdscr.refresh()
 
     menuitems = [
-            "e/w/g              - Manual align (East/West) / GoTo",
+            "e/w/g/q            - Manual align East/West / GoTo / Quit",
             "Left/Right/Up/Down - Control dome",
-            "1/2/3/4/           - light/telescope/camera/cover",
-            "q                  - Exit",
+            "1/2/3/4            - light/telescope/camera/cover",
             ]
     global menuwin
     menuwin = curses.newwin(len(menuitems)+2,curses.COLS-3,4,2)                                  
@@ -484,10 +478,8 @@ def main(stdscr):
     statusitems = [
             'Time',
             'Telescope', 
-            'Stellarium', 
-            'Auto alignment', 
             'Dome movement', 
-            'Lights/Telescope/Camera/Cover', 
+            'Lights/Scope/Camera/Cover', 
             'Alignment mode', 
             'Stepper (f/F)', 
     ] + [k for k,c in telescope_states]
