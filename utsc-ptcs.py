@@ -67,6 +67,45 @@ except:
 
 from curses import wrapper
 
+def stepperMove(inc):
+    for si in range(abs(inc)):
+            if inc > 0:
+                GPIO.output(29, 0) # A
+                GPIO.output(31, 1) # A-
+                GPIO.output(33, 0) # B
+                GPIO.output(37, 1) # B-
+            else:
+                GPIO.output(29, 1)
+                GPIO.output(31, 0)
+                GPIO.output(33, 1)
+                GPIO.output(37, 0)
+            time.sleep(0.01) # sleep 1 second
+            GPIO.output(29, 1)
+            GPIO.output(31, 0)
+            GPIO.output(33, 0)
+            GPIO.output(37, 1)
+            time.sleep(0.01) # sleep 1 second
+            if inc < 0:
+                GPIO.output(29, 0) # A
+                GPIO.output(31, 1) # A-
+                GPIO.output(33, 0) # B
+                GPIO.output(37, 1) # B-
+            else:
+                GPIO.output(29, 1)
+                GPIO.output(31, 0)
+                GPIO.output(33, 1)
+                GPIO.output(37, 0)
+            time.sleep(0.01) # sleep 1 second 
+            GPIO.output(29, 0)
+            GPIO.output(31, 1)
+            GPIO.output(33, 1)
+            GPIO.output(37, 0)
+            time.sleep(0.01) # sleep 1 second 
+    GPIO.output(29, 0)
+    GPIO.output(31, 0)
+    GPIO.output(33, 0)
+    GPIO.output(37, 0)
+
 def updateDomeStatus():
     dome = "---"
     try:
@@ -387,7 +426,15 @@ def autoalignment_communication():
                             statusUpdate("Alignment mode", "GoTo next coordinates.")
                             telescope_lock.release()
                         elif data_split[0]=="Focus":
-                            showMessage("Focus:"+data_split[1])
+                            try:
+                                steps = int(data_split[1])
+                            except:
+                                showMessage("Unknown stepper command received.")
+                            if abs(steps)>20:
+                                showMessage("Too many steps received.")
+                            else:
+                                stepperMove(steps)
+                            showMessage("Focus increment: %d"%steps)
                         else:
                             showMessage("Unknown command received.")
                 except socket.error as e:
@@ -612,47 +659,11 @@ def main(stdscr):
             statusUpdate("Alignment mode", "GoTo next coordinates.")
         elif c == ord('f') or c == ord("F"):
             if c == ord('f'):
-                stepperdir = 1
+                steps = focusstepperinc
             else:
-                stepperdir = -1
-            for si in range(focusstepperinc):
-                    if stepperdir >0:
-                        GPIO.output(29, 0) # A
-                        GPIO.output(31, 1) # A-
-                        GPIO.output(33, 0) # B
-                        GPIO.output(37, 1) # B-
-                    else:
-                        GPIO.output(29, 1)
-                        GPIO.output(31, 0)
-                        GPIO.output(33, 1)
-                        GPIO.output(37, 0)
-                    time.sleep(0.01) # sleep 1 second
-                    GPIO.output(29, 1)
-                    GPIO.output(31, 0)
-                    GPIO.output(33, 0)
-                    GPIO.output(37, 1)
-                    time.sleep(0.01) # sleep 1 second
-                    if stepperdir<0:
-                        GPIO.output(29, 0) # A
-                        GPIO.output(31, 1) # A-
-                        GPIO.output(33, 0) # B
-                        GPIO.output(37, 1) # B-
-                    else:
-                        GPIO.output(29, 1)
-                        GPIO.output(31, 0)
-                        GPIO.output(33, 1)
-                        GPIO.output(37, 0)
-                    time.sleep(0.01) # sleep 1 second 
-                    GPIO.output(29, 0)
-                    GPIO.output(31, 1)
-                    GPIO.output(33, 1)
-                    GPIO.output(37, 0)
-                    time.sleep(0.01) # sleep 1 second 
-            GPIO.output(29, 0)
-            GPIO.output(31, 0)
-            GPIO.output(33, 0)
-            GPIO.output(37, 0)
-            focussteppercount += focusstepperinc*stepperdir
+                steps = -focusstepperinc
+            stepperMove(steps)
+            focussteppercount += steps
             statusUpdate("Stepper (f/F)", "%d" % focussteppercount)
             with open(".focussteppercount","w") as f:
                 f.write("%d"%focussteppercount)
