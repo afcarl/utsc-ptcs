@@ -26,6 +26,7 @@ import glob
 import client
 import socket
 import sys
+r = os.system("killall gvfsd-gphoto2 2>\&1 /dev/null")<<8
 if len(sys.argv)<2:
     print("Usage ./takeimages.py SEC NUM ISO")
     exit(-1)
