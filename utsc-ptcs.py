@@ -260,7 +260,7 @@ def telescope_cmd(cmd,hideResponse=False):
     if telescope_port is not None:
         telescope_port.read(2048) # empty buffer
         telescope_port.write(cmd) 
-        for i in range(50): # wait 500ms max
+        for i in range(10): # wait 100ms max
             time.sleep(0.01)
             ret = telescope_port.read(2048).strip() 
             if len(ret)>0:
@@ -282,30 +282,32 @@ def telescope_communication():
             for (index,element) in enumerate(telescope_states):
                 value, command = element
                 ret = telescope_cmd(command,hideResponse=True) 
-                atcl_asynch = ret.split(chr(0x9F))
-                if len(atcl_asynch)>1:
-                    ret = atcl_asynch[0]
-                if len(ret)>0:
-                    if ret[0] == chr(0x8F):
-                        ret = "ATCL_ACK"
-                    elif ret[0] == chr(0xA5):
-                        ret = "ATCL_NACK"
+                if ret is not None:
+                    atcl_asynch = ret.split(chr(0x9F))
+                    if len(atcl_asynch)>1:
+                        ret = atcl_asynch[0]
+                    if len(ret)>0:
+                        if ret[0] == chr(0x8F):
+                            ret = "ATCL_ACK"
+                        elif ret[0] == chr(0xA5):
+                            ret = "ATCL_NACK"
+                        else:
+                            if ret[-1] == ";":
+                                ret = ret[:-1]
+                            try:
+                                if command == '!CGra;':
+                                    ra = ra_str2raw(ret)
+                                if command == '!CGde;':
+                                    dec = dec_str2raw(ret)
+                            except:
+                                ra, dec = None, None
                     else:
-                        if ret[-1] == ";":
-                            ret = ret[:-1]
-                        try:
-                            if command == '!CGra;':
-                                ra = ra_str2raw(ret)
-                            if command == '!CGde;':
-                                dec = dec_str2raw(ret)
-                        except:
-                            ra, dec = None, None
+                        ret = "N/A"
                 else:
                     ret = "N/A"
                 
-                
                 if "Internal error" in ret:
-                    print(ret)
+                    show_message(ret)
                     ret = "N/A"
                 telescope_states[index][0] = ret
             telescope_lock.release()
@@ -513,7 +515,7 @@ def main(stdscr):
     stdscr.refresh()
 
     menuitems = [
-            "e/w/g/q             : Manual align East,West / GoTo / Quit",
+            "e/w/g/!/q           : Align East-West / GoTo / Debug / Quit",
             "Left/Right/Up/Down  : Control dome",
             "1/2/3/4             : light/telescope/camera/cover",
             ]
@@ -648,6 +650,20 @@ def main(stdscr):
             start_manual_alignment_e()
         elif c == ord('w'):
             start_manual_alignment_w()
+        elif c == ord('!'):
+            curses.echo() 
+            s = menuwin.getstr(0,0, 15)
+            curses.noecho() 
+            if len(s)>0:
+                s = "!" + s + ";"
+                showMessage("Send: "+s)
+                telescope_lock.acquire()
+                ret = telescope_cmd(s)
+                telescope_lock.release()
+                if ret is None:
+                    showMessage("Recv: None")
+                else:
+                    showMessage("Recv: "+ret)
         elif c == ord('g'):
             alignment_mode = "goto"
             statusUpdate("Alignment mode", "GoTo next coordinates.")
