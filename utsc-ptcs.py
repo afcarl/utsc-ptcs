@@ -258,13 +258,15 @@ def telescope_response(ret):
 
 def telescope_cmd(cmd,hideResponse=False):
     if telescope_port is not None:
-        time.sleep(0.01)
+        telescope_port.read(2048) # empty buffer
         telescope_port.write(cmd) 
-        time.sleep(0.01)
-        ret = telescope_port.read(2048).strip()  # empty buffer
-        if not hideResponse:
-            telescope_response(ret);
-        return ret
+        for i in range(50): # wait 500ms max
+            time.sleep(0.01)
+            ret = telescope_port.read(2048).strip() 
+            if len(ret)>0:
+                if not hideResponse:
+                    telescope_response(ret);
+                return ret
     return None
 
 stop_threads = False
@@ -277,9 +279,6 @@ def telescope_communication():
         if telescope_port is not None:
             ra, dec = None, None
             telescope_lock.acquire()
-            data = telescope_port.read(2048) # empty buffer
-            if len(data)>0:
-                telescope_response(data)
             for (index,element) in enumerate(telescope_states):
                 value, command = element
                 ret = telescope_cmd(command,hideResponse=True) 
@@ -413,7 +412,6 @@ def autoalignment_communication():
                         data_split = data.split(";")
                         if data_split[0]=="East" or data_split[0]=="West":
                             telescope_lock.acquire()
-                            time.sleep(0.01)
                             direction, ra_string, dec_string = data_split
                             showMessage("Auto alignment coordinates received: (%s) %s %s" %(direction, ra_string, dec_string))
                             telescope_cmd('!ASas' + direction + ';')
@@ -456,16 +454,12 @@ def autoalignment_communication():
 
 
 def finish():
-    if vlcproc1 is not None:
-        os.system("kill -9 %d" % vlcproc1.pid)
-    if vlcproc2 is not None:
-        os.system("kill -9 %d" % vlcproc2.pid)
     print("Finishing...")
     try:
         for n,pin in enumerate(relaymap):
             if n<4: # only turn off dome, not other equipment
                 GPIO.output(pin, 1)
-        GPIO.cleanup()
+        #GPIO.cleanup()
     except:
         pass
     global stop_threads
@@ -519,7 +513,7 @@ def main(stdscr):
     stdscr.refresh()
 
     menuitems = [
-            "e/w/g/q             : Manual align East/West / GoTo / Quit",
+            "e/w/g/q             : Manual align East,West / GoTo / Quit",
             "Left/Right/Up/Down  : Control dome",
             "1/2/3/4             : light/telescope/camera/cover",
             ]
