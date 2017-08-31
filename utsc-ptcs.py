@@ -186,10 +186,16 @@ def showMessage(value):
     for index, key in enumerate(reversed(messages)):      
         messageswin.move(1+index, 2);   
         messageswin.clrtoeol(); 
+        messageswin.addstr(1+index, 2, "%4d : " % (messagesi+len(messages)-index-1))           
         try:
-            messageswin.addstr(1+index, 2, "%4d : %s" % (messagesi+len(messages)-index-1,key))           
+            if "ERROR" in key:
+                messageswin.addstr(1+index, 2+7, key, curses.A_STANDOUT)           
+            elif "WARNING" in key:
+                messageswin.addstr(1+index, 2+7, key, curses.A_BOLD)           
+            else:
+                messageswin.addstr(1+index, 2+7, key)           
         except:
-            messageswin.addstr(1+index, 2, "%4d : %s" % (messagesi+len(messages)-index-1,"Cannot display string"))           
+                messageswin.addstr(1+index, 2+7, "Cannot display string")           
     messageswin.border(0)
     messageswin.refresh()
     ncurses_lock.release()
@@ -239,12 +245,12 @@ def telescope_response(ret):
     if ret is None or len(ret)==0:
         return
     mask =  0b10000000
-    ret = ret.strip()
+    ret = ret.strip().strip(';')
     nextMessageColor = None
     for i in range(len(ret)):
         if ord(ret[i])&mask==128:
             if i>0:
-                showMessage(ret[0:i])
+                showMessage(ret[0:i].strip(';'))
             for c,n in special:
                 if ret[i] == c:
                     if n not in ["ATCL_STATUS","ATCL_ACK","ATCL_IDC_ASYNCH"]:
@@ -258,7 +264,8 @@ def telescope_response(ret):
 
 def telescope_cmd(cmd,hideResponse=False):
     if telescope_port is not None:
-        telescope_port.read(2048) # empty buffer
+        ret = telescope_port.read(2048) # empty buffer
+        telescope_response(ret)
         telescope_port.write(cmd) 
         for i in range(10): # wait 100ms max
             time.sleep(0.01)
