@@ -105,6 +105,11 @@ def stepperMove(inc):
     GPIO.output(31, 0)
     GPIO.output(33, 0)
     GPIO.output(37, 0)
+    global focussteppercount
+    focussteppercount += inc
+    statusUpdate("Stepper (f/F)", "%d" % focussteppercount)
+    with open(".focussteppercount","w") as f:
+        f.write("%d"%focussteppercount)
 
 def updateDomeStatus():
     dome = "---"
@@ -680,10 +685,6 @@ def main(stdscr):
             else:
                 steps = -focusstepperinc
             stepperMove(steps)
-            focussteppercount += steps
-            statusUpdate("Stepper (f/F)", "%d" % focussteppercount)
-            with open(".focussteppercount","w") as f:
-                f.write("%d"%focussteppercount)
     
 
 wrapper(main)
