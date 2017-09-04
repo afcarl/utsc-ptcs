@@ -23,16 +23,23 @@ import time
 import socket
 timestamp = int(time.time())
 
-if len(sys.argv)==4:
-    sec = int(sys.argv[1])
+if len(sys.argv)==4 or len(sys.argv)==5:
+    sec = float(sys.argv[1])
     inc = int(sys.argv[2])
     n = int(sys.argv[3])
+    if len(sys.argv)==5:
+        iso = int(sys.argv[4])
+    else:
+        iso = 3200
+
+    n = int(sys.argv[3])
 else:
-    print("Usage: ./focus.py SEC FOCUSINC FOCUSN")
+    print("Usage: ./focus.py SEC FOCUSINC FOCUSN ISO")
     print("                  ^-- integration time")
     print("                      ^-- increment per trial")
     print("                               ^-- trial in each direction")
     print("                                   total = 4 * FOCUSN")
+    print("                                      ^-- optional")
     quit(0)
 
 focushtml = """
@@ -97,7 +104,7 @@ images = []
 for direction in [1, -1, -1, 1]:
     for i in range(n):
         print("Taking image %d/%d."%(piccount+1,n*4))
-        r = os.system("./takeimages.py %d 1 3200"%sec)<<8
+        r = os.system("./takeimages.py %f 1 %d"%(sec,iso))<<8
         if r!=0:
             print("\033[91mProblem encountered trying to take image. Make sure camera is connected and not in use.\033[0m")
             quit(0)
