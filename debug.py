@@ -12,7 +12,7 @@ def open_port():
     if os.uname()[0]=="Darwin":
          default_port_name = '/dev/tty.usbserial'
     else:
-         default_port_name = '/dev/ttyUSB0'
+         default_port_name = '/dev/ttyAMA0'
     try:
          if port_name == '':
               port_name = default_port_name

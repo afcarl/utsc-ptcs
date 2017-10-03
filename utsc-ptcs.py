@@ -105,6 +105,11 @@ def stepperMove(inc):
     GPIO.output(31, 0)
     GPIO.output(33, 0)
     GPIO.output(37, 0)
+    global focussteppercount
+    focussteppercount += inc
+    statusUpdate("Stepper (f/F)", "%d" % focussteppercount)
+    with open(".focussteppercount","w") as f:
+        f.write("%d"%focussteppercount)
 
 def updateDomeStatus():
     dome = "---"
@@ -186,10 +191,16 @@ def showMessage(value):
     for index, key in enumerate(reversed(messages)):      
         messageswin.move(1+index, 2);   
         messageswin.clrtoeol(); 
+        messageswin.addstr(1+index, 2, "%4d : " % (messagesi+len(messages)-index-1))           
         try:
-            messageswin.addstr(1+index, 2, "%4d : %s" % (messagesi+len(messages)-index-1,key))           
+            if "ERROR" in key:
+                messageswin.addstr(1+index, 2+7, key, curses.A_STANDOUT)           
+            elif "WARNING" in key:
+                messageswin.addstr(1+index, 2+7, key, curses.A_BOLD)           
+            else:
+                messageswin.addstr(1+index, 2+7, key)           
         except:
-            messageswin.addstr(1+index, 2, "%4d : %s" % (messagesi+len(messages)-index-1,"Cannot display string"))           
+                messageswin.addstr(1+index, 2+7, "Cannot display string")           
     messageswin.border(0)
     messageswin.refresh()
     ncurses_lock.release()
@@ -239,12 +250,12 @@ def telescope_response(ret):
     if ret is None or len(ret)==0:
         return
     mask =  0b10000000
-    ret = ret.strip()
+    ret = ret.strip().strip(';')
     nextMessageColor = None
     for i in range(len(ret)):
         if ord(ret[i])&mask==128:
             if i>0:
-                showMessage(ret[0:i])
+                showMessage(ret[0:i].strip(';'))
             for c,n in special:
                 if ret[i] == c:
                     if n not in ["ATCL_STATUS","ATCL_ACK","ATCL_IDC_ASYNCH"]:
@@ -258,13 +269,16 @@ def telescope_response(ret):
 
 def telescope_cmd(cmd,hideResponse=False):
     if telescope_port is not None:
-        time.sleep(0.01)
+        ret = telescope_port.read(2048) # empty buffer
+        telescope_response(ret)
         telescope_port.write(cmd) 
-        time.sleep(0.01)
-        ret = telescope_port.read(2048).strip()  # empty buffer
-        if not hideResponse:
-            telescope_response(ret);
-        return ret
+        for i in range(10): # wait 100ms max
+            time.sleep(0.01)
+            ret = telescope_port.read(2048).strip() 
+            if len(ret)>0:
+                if not hideResponse:
+                    telescope_response(ret);
+                return ret
     return None
 
 stop_threads = False
@@ -277,36 +291,35 @@ def telescope_communication():
         if telescope_port is not None:
             ra, dec = None, None
             telescope_lock.acquire()
-            data = telescope_port.read(2048) # empty buffer
-            if len(data)>0:
-                telescope_response(data)
             for (index,element) in enumerate(telescope_states):
                 value, command = element
                 ret = telescope_cmd(command,hideResponse=True) 
-                atcl_asynch = ret.split(chr(0x9F))
-                if len(atcl_asynch)>1:
-                    ret = atcl_asynch[0]
-                if len(ret)>0:
-                    if ret[0] == chr(0x8F):
-                        ret = "ATCL_ACK"
-                    elif ret[0] == chr(0xA5):
-                        ret = "ATCL_NACK"
+                if ret is not None:
+                    atcl_asynch = ret.split(chr(0x9F))
+                    if len(atcl_asynch)>1:
+                        ret = atcl_asynch[0]
+                    if len(ret)>0:
+                        if ret[0] == chr(0x8F):
+                            ret = "ATCL_ACK"
+                        elif ret[0] == chr(0xA5):
+                            ret = "ATCL_NACK"
+                        else:
+                            if ret[-1] == ";":
+                                ret = ret[:-1]
+                            try:
+                                if command == '!CGra;':
+                                    ra = ra_str2raw(ret)
+                                if command == '!CGde;':
+                                    dec = dec_str2raw(ret)
+                            except:
+                                ra, dec = None, None
                     else:
-                        if ret[-1] == ";":
-                            ret = ret[:-1]
-                        try:
-                            if command == '!CGra;':
-                                ra = ra_str2raw(ret)
-                            if command == '!CGde;':
-                                dec = dec_str2raw(ret)
-                        except:
-                            ra, dec = None, None
+                        ret = "N/A"
                 else:
                     ret = "N/A"
                 
-                
                 if "Internal error" in ret:
-                    print(ret)
+                    show_message(ret)
                     ret = "N/A"
                 telescope_states[index][0] = ret
             telescope_lock.release()
@@ -413,7 +426,6 @@ def autoalignment_communication():
                         data_split = data.split(";")
                         if data_split[0]=="East" or data_split[0]=="West":
                             telescope_lock.acquire()
-                            time.sleep(0.01)
                             direction, ra_string, dec_string = data_split
                             showMessage("Auto alignment coordinates received: (%s) %s %s" %(direction, ra_string, dec_string))
                             telescope_cmd('!ASas' + direction + ';')
@@ -456,16 +468,12 @@ def autoalignment_communication():
 
 
 def finish():
-    if vlcproc1 is not None:
-        os.system("kill -9 %d" % vlcproc1.pid)
-    if vlcproc2 is not None:
-        os.system("kill -9 %d" % vlcproc2.pid)
     print("Finishing...")
     try:
         for n,pin in enumerate(relaymap):
             if n<4: # only turn off dome, not other equipment
                 GPIO.output(pin, 1)
-        GPIO.cleanup()
+        #GPIO.cleanup()
     except:
         pass
     global stop_threads
@@ -519,7 +527,7 @@ def main(stdscr):
     stdscr.refresh()
 
     menuitems = [
-            "e/w/g/q             : Manual align East/West / GoTo / Quit",
+            "e/w/g/!/q           : Align East-West / GoTo / Debug / Quit",
             "Left/Right/Up/Down  : Control dome",
             "1/2/3/4             : light/telescope/camera/cover",
             ]
@@ -654,6 +662,20 @@ def main(stdscr):
             start_manual_alignment_e()
         elif c == ord('w'):
             start_manual_alignment_w()
+        elif c == ord('!'):
+            curses.echo() 
+            s = menuwin.getstr(0,0, 15)
+            curses.noecho() 
+            if len(s)>0:
+                s = "!" + s + ";"
+                showMessage("Send: "+s)
+                telescope_lock.acquire()
+                ret = telescope_cmd(s)
+                telescope_lock.release()
+                if ret is None:
+                    showMessage("Recv: None")
+                else:
+                    showMessage("Recv: "+ret)
         elif c == ord('g'):
             alignment_mode = "goto"
             statusUpdate("Alignment mode", "GoTo next coordinates.")
@@ -663,10 +685,6 @@ def main(stdscr):
             else:
                 steps = -focusstepperinc
             stepperMove(steps)
-            focussteppercount += steps
-            statusUpdate("Stepper (f/F)", "%d" % focussteppercount)
-            with open(".focussteppercount","w") as f:
-                f.write("%d"%focussteppercount)
     
 
 wrapper(main)
