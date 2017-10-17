@@ -45,6 +45,7 @@ start = len(glob.glob("./images/%s/full*.jpg"%d))
 r = os.system("gphoto2 --set-config /main/imgsettings/imageformat=8")<<8
 if r!=0:
     print("\033[91mProblem encountered trying to set image format.\033[0m")
+    exit(-1)
 
 for i in range(start,N+start):
     if os.path.isfile("capt0000.jpg"):
@@ -54,14 +55,17 @@ for i in range(start,N+start):
     r = os.system("gphoto2 --set-config capture=on --set-config iso=%s"%iso)<<8
     if r!=0:
         print("\033[91mProblem encountered trying to set ISO.\033[0m")
+        exit(-1)
     r = os.system("gphoto2 --set-config shutterspeed=bulb")<<8
     if r!=0:
         print("\033[91mProblem encountered trying to set shutterspeed.\033[0m")
+        exit(-1)
     # Start time 
     jd = ( time.time() / 86400.0 ) + 2440587.5;
     r = os.system("gphoto2 --set-config eosremoterelease=Immediate --wait-event=%ss --set-config eosremoterelease=\"Release Full\" --wait-event-and-download=5s | sed -n '/UNKNOWN/!p'"%S)
     if r!=0:
         print("\033[91mProblem encountered trying to take image. Make sure camera is connected and not in use.\033[0m")
+        exit(-1)
         
     print("\033[92mImage %d/%d captured.\033[0m"%(i-start+1,N))
     os.system("mkdir -p images/%s" % d)
