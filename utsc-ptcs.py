@@ -46,8 +46,12 @@ try:
     GPIO.setwarnings(False)
     GPIO.setmode(GPIO.BOARD); 
     # Servo
+    GPIO.setup(16, GPIO.OUT)
+    GPIO.output(16, 1)
     GPIO.setup(12, GPIO.OUT)
-    servostatus = 5.
+    servostatus = 4.75
+    servoPWM = GPIO.PWM(12, 50)
+    servoPWM.start(100.)
     # Stepper
     GPIO.setup(29, GPIO.OUT)
     GPIO.setup(31, GPIO.OUT)
@@ -631,11 +635,14 @@ def main(stdscr):
             else:
                 servostatus = 10.
                 showMessage("Servo opening telescope")
-            servo = GPIO.PWM(12, 50)
-            servo.start(servostatus)
+            servoPWM.ChangeDutyCycle(servostatus)
+            time.sleep(.1)
+            GPIO.output(16, 0)
             updateDomeStatus()                    
             time.sleep(1.)
-            servo.stop()
+            GPIO.output(16, 1)
+            time.sleep(.1)
+            servoPWM.ChangeDutyCycle(100.)
 		
         elif c == ord('1'):
             current = GPIO.input(relaymap[4])
