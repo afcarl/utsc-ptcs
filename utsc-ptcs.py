@@ -31,6 +31,9 @@ import client
 import threading
 import subprocess
 import ephem
+import smbus
+import math
+i2cbus = smbus.SMBus(1) 
 toronto = ephem.city('Toronto')
 from conversions import *
 focusstepperinc = 4
@@ -40,7 +43,7 @@ try:
 except:
     focussteppercount = 0
 
-relaymap = [5,3,11,7,13,15,19]
+relaymap = [22,18,13,7,11,15,19]
 try:
     import RPi.GPIO as GPIO;
     GPIO.setwarnings(False)
@@ -68,6 +71,18 @@ try:
             GPIO.output(pin, 1)
 except:
     print("cannot access GPIO ports")
+
+def read_word_2c(adr):
+    try:
+        high = i2cbus.read_byte_data(0x68, adr)
+        low = i2cbus.read_byte_data(0x68, adr+1)
+        val = (high << 8) + low
+        if (val >= 0x8000):
+            return -((65535 - val) + 1)
+        else:
+            return val
+    except:
+        return 0
 
 from curses import wrapper
 
@@ -547,7 +562,7 @@ def main(stdscr):
    
     global statusitems
     statusitems = [
-            'Time UTC/siderial',
+            'Time UTC/siderial/accel',
             'Telescope', 
             'Dome movement', 
             'Lights/Scope/Camera/Cover', 
@@ -660,7 +675,19 @@ def main(stdscr):
             # No user interaction. 
             toronto.date = ephem.now()
             siderial = str(toronto.sidereal_time())
-            statusUpdate('Time UTC/siderial', time.strftime("%H:%M:%S", time.gmtime())+" / "+siderial)                    
+            try:
+                i2cbus.write_byte_data(0x68, 0x6b, 0)
+                ax = read_word_2c(0x3b)/ 16384.0
+                ay = read_word_2c(0x3d)/ 16384.0
+                az = read_word_2c(0x3f)/ 16384.0
+                radians = math.atan2(ax, math.sqrt(ay*ay+az*az))
+                angle1 = -math.degrees(radians)
+                radians = math.atan2(ay, math.sqrt(ax*ax+az*az))
+                angle2 = math.degrees(radians)
+            except:
+                angle1 = 0.
+                angle2 = 0.
+            statusUpdate('Time UTC/siderial/accel', time.strftime("%H:%M:%S", time.gmtime())+" / "+siderial+ " / %6.2f %6.2f" %(angle1, angle2))                    
             # Wait for next update
             time.sleep(0.05)
         elif c == ord('q'):
