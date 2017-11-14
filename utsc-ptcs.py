@@ -19,6 +19,8 @@
 #
 import serial
 #from PIL import ImageTk, Image
+import select
+
 import os
 import curses
 import socket
@@ -26,6 +28,7 @@ import struct
 import time
 import datetime
 import sys
+import select
 import signal
 import client
 import threading
@@ -72,6 +75,9 @@ try:
 except:
     print("cannot access GPIO ports")
 
+acceleration_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+acceleration_socket.bind(("",8086))
+acceleration_socket.setblocking(0)
 def read_word_2c(adr):
     try:
         high = i2cbus.read_byte_data(0x68, adr)
@@ -83,6 +89,15 @@ def read_word_2c(adr):
             return val
     except:
         return 0
+
+def convword(data):
+    high = ord(data[0])
+    low = ord(data[1])
+    val = (high << 8) + low
+    if (val >= 0x8000):
+        val = -((65535 - val) + 1)
+    val /= 16384.0
+    return val
 
 from curses import wrapper
 
@@ -414,7 +429,7 @@ def stellarium_communication():
             except socket.error as e:
                 showMessage("Stellarium socket error (%s)"%e.strerror)
                 stellarium_socket = None
-                time.sleep(5)
+                time.sleep(1)
         time.sleep(0.1)
 
 
@@ -482,8 +497,9 @@ def autoalignment_communication():
             except socket.error as e:
                 showMessage("Auto alignment socket error (%s)"%e.strerror)
                 autoalignment_socket = None
-                time.sleep(5)
+                time.sleep(1)
         time.sleep(0.1)
+
 
 
 def finish():
@@ -675,19 +691,14 @@ def main(stdscr):
             # No user interaction. 
             toronto.date = ephem.now()
             siderial = str(toronto.sidereal_time())
-            try:
-                i2cbus.write_byte_data(0x68, 0x6b, 0)
-                ax = read_word_2c(0x3b)/ 16384.0
-                ay = read_word_2c(0x3d)/ 16384.0
-                az = read_word_2c(0x3f)/ 16384.0
-                radians = math.atan2(ax, math.sqrt(ay*ay+az*az))
-                angle1 = -math.degrees(radians)
-                radians = math.atan2(ay, math.sqrt(ax*ax+az*az))
-                angle2 = math.degrees(radians)
-            except:
-                angle1 = 0.
-                angle2 = 0.
-            statusUpdate('Time UTC/siderial/accel', time.strftime("%H:%M:%S", time.gmtime())+" / "+siderial+ " / %6.2f %6.2f" %(angle1, angle2))                    
+            ready = select.select([acceleration_socket], [], [], 0.1)
+            if ready[0]:
+                    data = acceleration_socket.recv(4096)
+                    x, y, z = convword(data[0:2]), convword(data[2:4]), convword(data[4:6])
+            else:
+                    x,y,z = 0.,0.,0.
+             
+            statusUpdate('Time UTC/siderial/accel', time.strftime("%H:%M:%S", time.gmtime())+" / "+siderial+ " / %6.3f %6.3f %6.3f" %(x,y,z))                    
             # Wait for next update
             time.sleep(0.05)
         elif c == ord('q'):
