@@ -99,6 +99,13 @@ def convword(data):
     val /= 16384.0
     return val
 
+def norm(v):
+    n = math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2])
+    if n>0.:
+        return [v[0]/n,v[1]/n,v[2]/n]
+    else:
+        return [0.,0.,0.]
+
 from curses import wrapper
 
 def stepperMove(inc):
@@ -578,7 +585,7 @@ def main(stdscr):
    
     global statusitems
     statusitems = [
-            'Time UTC/siderial/accel',
+            'Time UTC/siderial/az/bank',
             'Telescope', 
             'Dome movement', 
             'Lights/Scope/Camera/Cover', 
@@ -694,11 +701,14 @@ def main(stdscr):
             ready = select.select([acceleration_socket], [], [], 0.1)
             if ready[0]:
                     data = acceleration_socket.recv(4096)
-                    x, y, z = convword(data[0:2]), convword(data[2:4]), convword(data[4:6])
+                    acc = norm([convword(data[0:2]), convword(data[2:4]), convword(data[4:6])])
+                    alt1 = 180./math.pi*math.atan2(-acc[0],math.sqrt(acc[1]*acc[1]+acc[2]*acc[2]))
+                    alt2 = 180./math.pi*math.atan2(-acc[1],math.sqrt(acc[2]*acc[2]+acc[0]*acc[0]))
+                    alt3 = 180./math.pi*math.atan2(-acc[2],math.sqrt(acc[0]*acc[0]+acc[1]*acc[1]))
             else:
-                    x,y,z = 0.,0.,0.
+                    alt1,alt2,alt3=0.,0.,0.
              
-            statusUpdate('Time UTC/siderial/accel', time.strftime("%H:%M:%S", time.gmtime())+" / "+siderial+ " / %6.3f %6.3f %6.3f" %(x,y,z))                    
+            statusUpdate('Time UTC/siderial/az/bank', time.strftime("%H:%M:%S", time.gmtime())+" / "+siderial+ " / %6.3f / %6.3f" %(alt1,alt3))                  
             # Wait for next update
             time.sleep(0.05)
         elif c == ord('q'):
