@@ -19,6 +19,8 @@
 #
 import serial
 #from PIL import ImageTk, Image
+import select
+
 import os
 import curses
 import socket
@@ -26,11 +28,15 @@ import struct
 import time
 import datetime
 import sys
+import select
 import signal
 import client
 import threading
 import subprocess
 import ephem
+import smbus
+import math
+i2cbus = smbus.SMBus(1) 
 toronto = ephem.city('Toronto')
 from conversions import *
 focusstepperinc = 4
@@ -40,14 +46,18 @@ try:
 except:
     focussteppercount = 0
 
-relaymap = [5,3,11,7,13,15,19]
+relaymap = [22,18,13,7,11,15,19]
 try:
     import RPi.GPIO as GPIO;
     GPIO.setwarnings(False)
     GPIO.setmode(GPIO.BOARD); 
     # Servo
+    GPIO.setup(16, GPIO.OUT)
+    GPIO.output(16, 1)
     GPIO.setup(12, GPIO.OUT)
-    servostatus = 5.
+    servostatus = 4.75
+    servoPWM = GPIO.PWM(12, 50)
+    servoPWM.start(100.)
     # Stepper
     GPIO.setup(29, GPIO.OUT)
     GPIO.setup(31, GPIO.OUT)
@@ -64,6 +74,37 @@ try:
             GPIO.output(pin, 1)
 except:
     print("cannot access GPIO ports")
+
+acceleration_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+acceleration_socket.bind(("",8086))
+acceleration_socket.setblocking(0)
+def read_word_2c(adr):
+    try:
+        high = i2cbus.read_byte_data(0x68, adr)
+        low = i2cbus.read_byte_data(0x68, adr+1)
+        val = (high << 8) + low
+        if (val >= 0x8000):
+            return -((65535 - val) + 1)
+        else:
+            return val
+    except:
+        return 0
+
+def convword(data):
+    high = ord(data[0])
+    low = ord(data[1])
+    val = (high << 8) + low
+    if (val >= 0x8000):
+        val = -((65535 - val) + 1)
+    val /= 16384.0
+    return val
+
+def norm(v):
+    n = math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2])
+    if n>0.:
+        return [v[0]/n,v[1]/n,v[2]/n]
+    else:
+        return [0.,0.,0.]
 
 from curses import wrapper
 
@@ -395,7 +436,7 @@ def stellarium_communication():
             except socket.error as e:
                 showMessage("Stellarium socket error (%s)"%e.strerror)
                 stellarium_socket = None
-                time.sleep(5)
+                time.sleep(1)
         time.sleep(0.1)
 
 
@@ -463,8 +504,9 @@ def autoalignment_communication():
             except socket.error as e:
                 showMessage("Auto alignment socket error (%s)"%e.strerror)
                 autoalignment_socket = None
-                time.sleep(5)
+                time.sleep(1)
         time.sleep(0.1)
+
 
 
 def finish():
@@ -543,7 +585,7 @@ def main(stdscr):
    
     global statusitems
     statusitems = [
-            'Time UTC/siderial',
+            'Time UTC/siderial/az/bank',
             'Telescope', 
             'Dome movement', 
             'Lights/Scope/Camera/Cover', 
@@ -631,11 +673,14 @@ def main(stdscr):
             else:
                 servostatus = 10.
                 showMessage("Servo opening telescope")
-            servo = GPIO.PWM(12, 50)
-            servo.start(servostatus)
+            servoPWM.ChangeDutyCycle(servostatus)
+            time.sleep(.1)
+            GPIO.output(16, 0)
             updateDomeStatus()                    
             time.sleep(1.)
-            servo.stop()
+            GPIO.output(16, 1)
+            time.sleep(.1)
+            servoPWM.ChangeDutyCycle(100.)
 		
         elif c == ord('1'):
             current = GPIO.input(relaymap[4])
@@ -653,7 +698,17 @@ def main(stdscr):
             # No user interaction. 
             toronto.date = ephem.now()
             siderial = str(toronto.sidereal_time())
-            statusUpdate('Time UTC/siderial', time.strftime("%H:%M:%S", time.gmtime())+" / "+siderial)                    
+            ready = select.select([acceleration_socket], [], [], 0.1)
+            if ready[0]:
+                    data = acceleration_socket.recv(4096)
+                    acc = norm([convword(data[0:2]), convword(data[2:4]), convword(data[4:6])])
+                    alt1 = 180./math.pi*math.atan2(-acc[0],math.sqrt(acc[1]*acc[1]+acc[2]*acc[2]))
+                    alt2 = 180./math.pi*math.atan2(-acc[1],math.sqrt(acc[2]*acc[2]+acc[0]*acc[0]))
+                    alt3 = 180./math.pi*math.atan2(-acc[2],math.sqrt(acc[0]*acc[0]+acc[1]*acc[1]))
+            else:
+                    alt1,alt2,alt3=0.,0.,0.
+             
+            statusUpdate('Time UTC/siderial/az/bank', time.strftime("%H:%M:%S", time.gmtime())+" / "+siderial+ " / %6.3f / %6.3f" %(alt1,alt3))                  
             # Wait for next update
             time.sleep(0.05)
         elif c == ord('q'):
