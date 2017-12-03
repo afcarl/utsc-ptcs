@@ -702,22 +702,26 @@ def main(stdscr):
             toronto.date = ephem.now()
             siderial = str(toronto.sidereal_time())
             ready = select.select([acceleration_socket], [], [], 0.1)
+            alt1,alt2,alt3=0.,0.,0.
             if ready[0]:
-                data = acceleration_socket.recv(4096)
-                acc = norm([convword(data[0:2]), convword(data[2:4]), convword(data[4:6])])
-                alt1 = 180./math.pi*math.atan2(-acc[0],math.sqrt(acc[1]*acc[1]+acc[2]*acc[2]))
-                alt2 = 180./math.pi*math.atan2(-acc[1],math.sqrt(acc[2]*acc[2]+acc[0]*acc[0]))
-                alt3 = 180./math.pi*math.atan2(-acc[2],math.sqrt(acc[0]*acc[0]+acc[1]*acc[1]))
-            else:
+                try:
+                    data = acceleration_socket.recv(4096)
+                    acc = norm([convword(data[0:2]), convword(data[2:4]), convword(data[4:6])])
+                    alt1 = 180./math.pi*math.atan2(-acc[0],math.sqrt(acc[1]*acc[1]+acc[2]*acc[2]))
+                    alt2 = 180./math.pi*math.atan2(-acc[1],math.sqrt(acc[2]*acc[2]+acc[0]*acc[0]))
+                    alt3 = 180./math.pi*math.atan2(-acc[2],math.sqrt(acc[0]*acc[0]+acc[1]*acc[1]))
+                except:
                     alt1,alt2,alt3=0.,0.,0.
             ready = select.select([voltage_socket], [], [], 0.1)
+            volt = -1.
             if ready[0]:
-                data = voltage_socket.recv(4096)
-                volt = ord(data[0])
-            else:
-                volt = 0.
+                try:
+                    data = voltage_socket.recv(4096)
+                    volt = float(struct.unpack("B", data[0])[0])/20.*15.
+                except:
+                    volt = -1
              
-            statusUpdate('Time UTC/siderial/az/bank', time.strftime("%H:%M:%S", time.gmtime())+" / "+siderial+ " / %6.3f / %6.3f / %f" %(alt1,alt3,volt))                  
+            statusUpdate('Time UTC/siderial/az/bank', time.strftime("%H:%M:%S", time.gmtime())+" / "+siderial+ " / %6.3f / %6.3f / %4.1f" %(alt1,alt3,volt))                  
             # Wait for next update
             time.sleep(0.05)
         elif c == ord('q'):
