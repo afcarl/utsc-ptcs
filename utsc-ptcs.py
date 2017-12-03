@@ -717,11 +717,15 @@ def main(stdscr):
             if ready[0]:
                 try:
                     data = voltage_socket.recv(4096)
-                    volt = float(struct.unpack("B", data[0])[0])/20.*15.
+                    high = ord(data[0])
+                    low = ord(data[1])
+                    volt = (high << 8) + low
+                    volt = float(volt)/52.50
+                    #volt = float(struct.unpack("B", data[0])[0])
                 except:
                     volt = -1
              
-            statusUpdate('Time UTC/siderial/az/bank', time.strftime("%H:%M:%S", time.gmtime())+" / "+siderial+ " / %6.3f / %6.3f / %4.1f" %(alt1,alt3,volt))                  
+            statusUpdate('Time UTC/siderial/az/bank', time.strftime("%H:%M:%S", time.gmtime())+" / "+siderial+ " / %6.3f / %6.3f / %6.1f" %(alt1,alt3,volt))                  
             # Wait for next update
             time.sleep(0.05)
         elif c == ord('q'):
